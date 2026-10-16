@@ -1,0 +1,2165 @@
+<!DOCTYPE html>
+<html lang="ms">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>STAZ INTEGRATED ASSESSMENT CENTER</title>
+  
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js" crossorigin></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js" crossorigin></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js" crossorigin></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.3.0/exceljs.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+  
+  <style>
+    body { font-family: 'Inter', sans-serif; }
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #f1f5f9; }
+    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+    .animate-fadeIn { animation: fadeIn 0.3s ease-in-out; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(-5px); } to { opacity: 1; transform: translateY(0); } }
+    
+    @media print {
+      .no-print { display: none !important; }
+      .print-only { display: block !important; }
+      body, html { background-color: #ffffff !important; color: #000000 !important; margin: 0 !important; padding: 0 !important; }
+      .print-container { padding: 0 !important; margin: 0 !important; box-shadow: none !important; border: none !important; width: 100% !important; max-width: 100% !important; }
+      @page { size: A4 portrait; margin: 1cm; }
+      * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+    }
+  </style>
+</head>
+<body class="bg-slate-100 min-h-screen text-slate-800 antialiased selection:bg-amber-300 selection:text-slate-900">
+
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useMemo, useRef, Fragment } = React;
+
+    // MASUKKAN URL WEB APP GOOGLE APPS SCRIPT ANDA DI SINI
+    const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxKcEgC5A7UDNVl020x-464I0RosyCvXr64JHqgr6gh8nMAzw_qZtDrFzPYj2a-nwUVEw/exec";
+
+    const getFullClassName = (year, cls) => `${year.toUpperCase()} ${cls.toUpperCase()}`;
+    const calculateDynamicGrade = (mark, examTypeName, gradingScales) => {
+      const num = parseFloat(mark);
+      if (isNaN(num)) return { grade: '-', tp: 1, desc: 'BELUM MENCAPAI TAHAP MINIMUM' };
+      const scale = gradingScales && gradingScales[examTypeName] && gradingScales[examTypeName].length > 0 ? gradingScales[examTypeName] : (gradingScales && Object.keys(gradingScales).length > 0 ? gradingScales[Object.keys(gradingScales)[0]] : []);
+      if (!scale || scale.length === 0) return { grade: '-', tp: 1, desc: '-' };
+      for (let i = 0; i < scale.length; i++) {
+        if (num >= scale[i].min && num <= scale[i].max) return { grade: scale[i].grade, tp: scale[i].tp, desc: scale[i].desc.toUpperCase() };
+      }
+      return { grade: 'F', tp: 1, desc: 'BELUM MENCAPAI TAHAP MINIMUM' };
+    };
+
+    const initialAcademicYears = ['2025/2026', '2026/2027'];
+    const initialExamTypes = [
+      { name: 'PENTAKSIRAN BERTERUSAN (PBD)', classes: ['TAHUN SATU ARIF', 'TAHUN DUA ABRAR'] },
+      { name: 'UJIAN PERTENGAHAN SESI AKADEMIK (UPSA)', classes: [] },
+      { name: 'UJIAN AKHIR SESI AKADEMIK (UASA)', classes: [] }
+    ];
+    const tahunList = ['TAHUN SATU', 'TAHUN DUA', 'TAHUN TIGA', 'TAHUN EMPAT', 'TAHUN LIMA', 'TAHUN ENAM', 'KELAS KHAS RENDAH'];
+    const initialClasses = ['ARIF', 'ABRAR', 'ADIL', 'AFDHAL', 'AMAL', 'AZAM'];
+    const initialSubjectsByYear = {
+      'TAHUN SATU': ['BAHASA MELAYU', 'BAHASA INGGERIS', 'MATEMATIK', 'SAINS', 'PENDIDIKAN ISLAM', 'PENDIDIKAN JASMANI & KESIHATAN'],
+      'TAHUN DUA': ['BAHASA MELAYU', 'BAHASA INGGERIS', 'MATEMATIK', 'SAINS'],
+    };
+    const initialSubjectAbbreviations = { 'BAHASA MELAYU': 'BM', 'BAHASA INGGERIS': 'BI', 'MATEMATIK': 'MT', 'SAINS': 'SN' };
+    const initialGradingScales = {
+      'PENTAKSIRAN BERTERUSAN (PBD)': [
+        { min: 82, max: 100, grade: 'A', tp: 6, desc: 'CEMERLANG' },
+        { min: 66, max: 81, grade: 'B', tp: 5, desc: 'SANGAT BAIK' },
+        { min: 50, max: 65, grade: 'C', tp: 4, desc: 'BAIK' },
+        { min: 35, max: 49, grade: 'D', tp: 3, desc: 'MEMUASKAN' },
+        { min: 20, max: 34, grade: 'E', tp: 2, desc: 'MENCAPAI TAHAP MINIMUM' },
+        { min: 0, max: 19, grade: 'F', tp: 1, desc: 'BELUM MENCAPAI TAHAP MINIMUM' }
+      ]
+    };
+    const initialStudents = [];
+    const initialTeachers = [];
+    const initialPbdRecords = [];
+
+    const Icon = ({ name, size = 18, className = "" }) => {
+      const icons = {
+        users: <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zm10-2h4m-2-2v4" />,
+        book: <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20M4 19.5A2.5 2.5 0 0 0 6.5 22H20 M4 19.5V5a2.5 2.5 0 0 1 2.5-2.5H20v14" />,
+        settings: <g><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" /></g>,
+        chart: <g><line x1="18" y1="20" x2="18" y2="10" /><line x1="12" y1="20" x2="12" y2="4" /><line x1="6" y1="20" x2="6" y2="14" /></g>,
+        download: <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3" />,
+        logout: <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9" />,
+        printer: <g><polyline points="6 9 6 2 18 2 18 9" /><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" /><rect x="6" y="14" width="12" height="8" /></g>,
+        search: <g><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></g>,
+        save: <g><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" /><polyline points="17 21 17 13 7 13 7 21" /><polyline points="7 3 7 8 15 8" /></g>,
+        trash: <g><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2-2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /><line x1="10" y1="11" x2="10" y2="17" /><line x1="14" y1="11" x2="14" y2="17" /></g>,
+        edit: <g><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4 9.5-9.5z" /></g>,
+        check: <polyline points="20 6 9 17 4 12" />,
+        plus: <g><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></g>,
+        userCheck: <g><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="8.5" cy="7" r="4" /><polyline points="17 11 19 13 23 9" /></g>,
+        image: <g><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></g>,
+        alert: <g><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></g>,
+        copy: <g><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></g>,
+        x: <g><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></g>
+      };
+      return <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>{icons[name] || null}</svg>;
+    };
+
+    // Fungsi Hook Tersuai (Custom Hook) untuk Perlindungan Autosave
+    // Mencegah penulisan automatik pada muatan awal supaya data awan tidak terpadam.
+    const useAutosave = (key, val, isHydrated, saveFunc) => {
+      const isFirstRender = useRef(true);
+      useEffect(() => {
+        if (!isHydrated) return; // Kunci: Jangan benarkan fungsi jalan jika belum dipastikan berjaya muat
+        if (isFirstRender.current) {
+          isFirstRender.current = false;
+          return;
+        }
+        saveFunc(key, val);
+      }, [val, isHydrated]); 
+    };
+
+    const Login = ({ teachers, students, setCurrentRole, setCurrentUser, notify, schoolLogo }) => {
+      const [roleSelected, setRoleSelected] = useState('admin');
+      const [password, setPassword] = useState('');
+      const [email, setEmail] = useState('');
+      const [ic, setIc] = useState('');
+      const [rememberMe, setRememberMe] = useState(false);
+
+      useEffect(() => {
+        if (roleSelected === 'admin') {
+          const savedPwd = localStorage.getItem('staz_admin_pwd');
+          if (savedPwd) { setPassword(savedPwd); setRememberMe(true); } else { setPassword(''); setRememberMe(false); }
+        } else if (roleSelected === 'guru') {
+          const savedId = localStorage.getItem('staz_teacher_id');
+          if (savedId) { setEmail(savedId); setRememberMe(true); } else { setEmail(''); setRememberMe(false); }
+        } else if (roleSelected === 'ibubapa') {
+          const savedIc = localStorage.getItem('staz_parent_ic');
+          if (savedIc) { setIc(savedIc); setRememberMe(true); } else { setIc(''); setRememberMe(false); }
+        }
+      }, [roleSelected]);
+
+      const handleLogin = (e) => {
+        e.preventDefault();
+        
+        if (roleSelected === 'admin') {
+          if (password === 'staz@4105' || password === 'admin') {
+            if (rememberMe) localStorage.setItem('staz_admin_pwd', password);
+            else localStorage.removeItem('staz_admin_pwd');
+            setCurrentRole('admin'); setCurrentUser({ name: 'PENTADBIR SISTEM (ADMIN)', email: 'admin@sktunkuazizah.edu.my' });
+            notify('Log masuk Admin berjaya!', 'success');
+          } else { notify('Katalaluan salah!', 'error'); }
+          
+        } else if (roleSelected === 'guru') {
+          let inputId = email.trim().toLowerCase();
+          inputId = inputId.replace('@moe-dl.edu.my', '');
+          const fullEmail = `${inputId}@moe-dl.edu.my`;
+
+          const teacher = teachers.find(t => t.email.toLowerCase() === fullEmail);
+          if (teacher) { 
+            if (rememberMe) localStorage.setItem('staz_teacher_id', inputId);
+            else localStorage.removeItem('staz_teacher_id');
+            setCurrentRole('guru'); setCurrentUser(teacher); notify(`Selamat datang, ${teacher.name}!`, 'success'); 
+          } else { notify('Emel guru tidak ditemui dalam rekod!', 'error'); }
+          
+        } else if (roleSelected === 'ibubapa') {
+          const cleanIc = ic.replace(/[^0-9]/g, '');
+          const student = students.find(s => s.ic === cleanIc);
+          if (student) { 
+            if (rememberMe) localStorage.setItem('staz_parent_ic', cleanIc);
+            else localStorage.removeItem('staz_parent_ic');
+            setCurrentRole('ibubapa'); setCurrentUser(student); notify(`Slip Pelaporan PBD dimuatkan.`, 'success'); 
+          } else { notify('No. Kad Pengenalan murid tidak dijumpai!', 'error'); }
+        }
+      };
+
+      return (
+        <div className="min-h-screen bg-slate-100 flex flex-col items-center justify-center p-4 relative">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden border border-slate-200 z-10">
+            <div className="bg-gradient-to-b from-[#1e40af] to-blue-900 py-10 px-6 text-center text-white relative flex flex-col items-center">
+              {schoolLogo ? (
+                <img src={schoolLogo} alt="Logo Sekolah" className="w-40 h-40 object-contain mb-4 drop-shadow-xl" />
+              ) : (
+                <div className="w-28 h-28 bg-amber-400 rounded-full flex items-center justify-center text-blue-900 font-black text-3xl mb-4 shadow-xl">STAZ</div>
+              )}
+              <h1 className="text-3xl font-black text-amber-400 tracking-wide uppercase drop-shadow">SK TUNKU AZIZAH</h1>
+              <p className="text-xs font-bold text-blue-100 tracking-wider uppercase mt-2 opacity-90">Sistem Perekodan Pentaksiran Murid</p>
+            </div>
+
+            <div className="p-8">
+              <div className="flex justify-center items-center gap-2 mb-8 bg-slate-100 p-1.5 rounded-xl">
+                {['admin', 'guru', 'ibubapa'].map(role => (
+                  <button key={role} type="button" onClick={() => setRoleSelected(role)} className={`flex-1 py-2.5 text-xs font-bold rounded-lg transition-all capitalize ${roleSelected === role ? 'bg-white text-blue-900 shadow-sm font-extrabold' : 'text-slate-500 hover:text-slate-800 hover:bg-slate-200/50'}`}>
+                    {role === 'ibubapa' ? 'Ibu Bapa' : role === 'admin' ? 'Admin' : 'Guru'}
+                  </button>
+                ))}
+              </div>
+
+              <form onSubmit={handleLogin} className="space-y-5">
+                {roleSelected === 'admin' && (
+                  <div className="animate-fadeIn">
+                    <label className="block text-xs font-extrabold text-slate-700 mb-2 uppercase tracking-wide">Katalaluan Admin</label>
+                    <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full border-2 border-slate-200 rounded-xl p-3.5 text-sm focus:ring-0 focus:border-blue-600 bg-slate-50 focus:bg-white text-slate-800 transition-all font-mono" placeholder="Masukkan katalaluan" required />
+                  </div>
+                )}
+                {roleSelected === 'guru' && (
+                  <div className="animate-fadeIn">
+                    <label className="block text-xs font-extrabold text-slate-700 mb-2 uppercase tracking-wide">ID DELIMa Guru</label>
+                    <div className="flex items-stretch shadow-sm rounded-xl overflow-hidden border-2 border-slate-200 focus-within:border-blue-600 transition-all bg-slate-50 focus-within:bg-white">
+                      <input type="text" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full p-3.5 text-sm border-none focus:ring-0 bg-transparent text-slate-800 font-medium outline-none" placeholder="cth: g-12345" required />
+                      <div className="bg-slate-200 text-slate-600 px-3 flex items-center justify-center text-sm font-semibold border-l-2 border-slate-200">
+                        @moe-dl.edu.my
+                      </div>
+                    </div>
+                  </div>
+                )}
+                {roleSelected === 'ibubapa' && (
+                  <div className="animate-fadeIn">
+                    <label className="block text-xs font-extrabold text-slate-700 mb-2 uppercase tracking-wide">No Kad Pengenalan Murid</label>
+                    <input type="text" value={ic} onChange={(e) => setIc(e.target.value)} className="w-full border-2 border-slate-200 rounded-xl p-3.5 text-sm focus:ring-0 focus:border-blue-600 bg-slate-50 focus:bg-white text-slate-800 transition-all font-mono tracking-wider" placeholder="Tanpa sempang ( - )" required />
+                  </div>
+                )}
+                
+                <div className="mt-4 flex items-center px-1 animate-fadeIn">
+                  <input type="checkbox" id="rememberMe" checked={rememberMe} onChange={(e) => setRememberMe(e.target.checked)} className="w-4 h-4 text-blue-600 bg-slate-100 border-slate-300 rounded focus:ring-blue-500 cursor-pointer" />
+                  <label htmlFor="rememberMe" className="ml-2 text-xs text-slate-600 font-bold cursor-pointer hover:text-blue-800 transition-colors">
+                    {roleSelected === 'admin' ? 'Ingat Katalaluan' : roleSelected === 'guru' ? 'Ingat ID emel saya' : 'Ingat No. K/P murid'}
+                  </label>
+                </div>
+
+                <button type="submit" className="w-full bg-[#1e40af] hover:bg-blue-900 text-amber-400 font-extrabold py-4 px-4 rounded-xl shadow-lg hover:shadow-xl transition-all text-sm uppercase tracking-widest mt-6 flex justify-center items-center gap-2">
+                  <Icon name="check" size={18}/> Teruskan
+                </button>
+              </form>
+            </div>
+          </div>
+
+          <div className="absolute bottom-6 w-full text-center z-0 no-print">
+            <p className="text-[10px] font-bold text-slate-400 tracking-[0.2em] uppercase">
+              © HAK CIPTA TERPELIHARA | UNIT PENGURUSAN DATA & MAKLUMAT
+            </p>
+          </div>
+        </div>
+      );
+    };
+
+    const AdminDashboard = ({ students, teachers, pbdRecords, academicYears, examTypes, classes, schoolLogo, setSchoolLogo, subjectsByYear, subjectAbbreviations, gradingScales, notify }) => {
+      const [viewYear, setViewYear] = useState(academicYears[0] || '');
+      const [viewExam, setViewExam] = useState(examTypes.length > 0 ? examTypes[0].name : '');
+      const [exportStdYear, setExportStdYear] = useState('SEMUA TAHUN');
+      const [exportBaseClass, setExportBaseClass] = useState('SEMUA KELAS');
+
+      const analysisDataByYear = useMemo(() => {
+        const data = {};
+        const relevantStudents = students.filter(s => s.academicYear === viewYear && s.examType === viewExam);
+        const classGroupsMap = new Map();
+        // Gabungkan kelas yang telah ditetapkan untuk pentaksiran dengan kelas yang ada murid.
+        // Ini memastikan kelas kosong / belum ada murid tetap kelihatan pada dashboard.
+        const selectedExam = examTypes.find(ex => ex.name === viewExam);
+        (selectedExam && Array.isArray(selectedExam.classes) ? selectedExam.classes : []).forEach(fullName => {
+          const normalized = String(fullName || '').toUpperCase();
+          const year = tahunList.find(y => normalized.startsWith(y + ' '));
+          if (year) {
+            const className = normalized.substring(year.length).trim();
+            if (className) classGroupsMap.set(`${year}-${className}`, { year, className });
+          }
+        });
+        relevantStudents.forEach(s => {
+          const key = `${s.year}-${s.className}`;
+          if (!classGroupsMap.has(key)) classGroupsMap.set(key, { year: s.year, className: s.className });
+        });
+        const classGroups = Array.from(classGroupsMap.values());
+
+        classGroups.forEach(g => {
+          if (!data[g.year]) data[g.year] = [];
+          const studentsInClass = relevantStudents.filter(s => s.year === g.year && s.className === g.className);
+          const subjects = subjectsByYear[g.year] || [];
+          
+          const subjectStatus = subjects.map(sub => {
+            let markFilledCount = 0;
+            let tpFilledCount = 0;
+            studentsInClass.forEach(s => {
+               const rec = pbdRecords.find(r => r.studentIc === s.ic && r.academicYear === viewYear && r.examType === viewExam && r.subject === sub);
+               if (rec && rec.mark !== '' && rec.mark !== undefined && rec.mark !== null) markFilledCount++;
+               if (rec && rec.tp !== '' && rec.tp !== undefined && rec.tp !== null) tpFilledCount++;
+            });
+            const total = studentsInClass.length;
+            return { 
+              subject: sub, 
+              markFilledCount, 
+              tpFilledCount, 
+              isMarkComplete: total > 0 && markFilledCount === total, 
+              isTpComplete: total > 0 && tpFilledCount === total, 
+              total 
+            };
+          });
+          
+          data[g.year].push({ className: g.className, studentsCount: studentsInClass.length, subjectStatus });
+        });
+        return data;
+      }, [students, pbdRecords, viewYear, viewExam, subjectsByYear, examTypes]);
+
+      const handleLogoUpload = (e) => {
+        const file = e.target.files[0];
+        if (file) {
+          const reader = new FileReader();
+          reader.onload = (event) => {
+            const img = new Image();
+            img.onload = () => {
+              const canvas = document.createElement('canvas');
+              const MAX_WIDTH = 300;
+              const MAX_HEIGHT = 300;
+              let width = img.width;
+              let height = img.height;
+              if (width > height) { if (width > MAX_WIDTH) { height *= MAX_WIDTH / width; width = MAX_WIDTH; } } 
+              else { if (height > MAX_HEIGHT) { width *= MAX_HEIGHT / height; height = MAX_HEIGHT; } }
+              canvas.width = width; canvas.height = height;
+              const ctx = canvas.getContext('2d');
+              ctx.drawImage(img, 0, 0, width, height);
+              const compressedBase64 = canvas.toDataURL('image/png');
+              setSchoolLogo(compressedBase64);
+              notify('Logo rasmi sekolah berjaya dikemaskini dan disimpan', 'success');
+            };
+            img.src = event.target.result;
+          };
+          reader.readAsDataURL(file);
+        }
+      };
+
+      const handleDownloadExcel = async () => {
+        if (!viewYear || !viewExam) { notify('Sila pilih Sesi dan Pentaksiran.', 'error'); return; }
+        try {
+          notify('Sedang menjana Buku Kerja Excel berstruktur profesional...', 'info');
+          const workbook = new ExcelJS.Workbook();
+          let sheetsCreated = 0;
+          const relevantStudents = students.filter(s => s.academicYear === viewYear && s.examType === viewExam);
+          if (relevantStudents.length === 0) { notify('Tiada data murid direkodkan untuk pentaksiran ini.', 'error'); return; }
+
+          const classGroupsMap = new Map();
+          relevantStudents.forEach(s => {
+            const key = `${s.year}-${s.className}`;
+            if (!classGroupsMap.has(key)) classGroupsMap.set(key, { year: s.year, className: s.className });
+          });
+          
+          let filteredGroups = Array.from(classGroupsMap.values());
+          if (exportStdYear !== 'SEMUA TAHUN') filteredGroups = filteredGroups.filter(g => g.year === exportStdYear);
+          if (exportBaseClass !== 'SEMUA KELAS') filteredGroups = filteredGroups.filter(g => g.className === exportBaseClass);
+
+          const yearOrder = ['TAHUN SATU', 'TAHUN DUA', 'TAHUN TIGA', 'TAHUN EMPAT', 'TAHUN LIMA', 'TAHUN ENAM', 'KELAS KHAS RENDAH'];
+          filteredGroups.sort((a, b) => {
+            const yA = yearOrder.indexOf(a.year); const yB = yearOrder.indexOf(b.year);
+            if (yA !== yB) return yA - yB; return a.className.localeCompare(b.className);
+          });
+
+          if (filteredGroups.length === 0) { notify('Tiada data murid padan dengan tapisan.', 'error'); return; }
+          let logoId = null;
+          if (schoolLogo) { logoId = workbook.addImage({ base64: schoolLogo, extension: 'png' }); }
+
+          for (let group of filteredGroups) {
+            const classStudents = relevantStudents.filter(s => s.year === group.year && s.className === group.className).sort((a,b) => a.name.localeCompare(b.name));
+            if (classStudents.length === 0) continue; 
+
+            const stdYear = group.year; 
+            const baseClass = group.className;
+            const fullClassName = getFullClassName(stdYear, baseClass);
+            const safeSheetName = fullClassName.substring(0, 31).replace(/[\\/?*\[\]]/g, '');
+            const subjects = subjectsByYear[stdYear] || [];
+            
+            const sheet = workbook.addWorksheet(safeSheetName, { pageSetup: { paperSize: 9, orientation: 'landscape', fitToPage: true, fitToWidth: 1, printTitlesRow: '9:10' } });
+
+            for(let r=1; r<=200; r++) sheet.getRow(r).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFFFF' }};
+            if (logoId !== null) { sheet.addImage(logoId, { tl: { col: 0, row: 0 }, ext: { width: 100, height: 100 } }); }
+
+            sheet.mergeCells('C1:J1'); sheet.getCell('C1').value = 'SEKOLAH KEBANGSAAN TUNKU AZIZAH'; sheet.getCell('C1').font = { name: 'Arial', size: 16, bold: true }; sheet.getCell('C1').alignment = { vertical: 'middle', horizontal: 'left' };
+            sheet.mergeCells('C2:J2'); sheet.getCell('C2').value = 'REKOD PEREKODAN MARKAH DAN TAHAP PENGUASAAN'; sheet.getCell('C2').font = { name: 'Arial', size: 12, bold: true }; sheet.getCell('C2').alignment = { vertical: 'middle', horizontal: 'left' };
+
+            sheet.getCell('C4').value = 'PENTAKSIRAN:'; sheet.getCell('D4').value = viewExam.toUpperCase(); sheet.getCell('D4').font = { bold: true };
+            sheet.getCell('C5').value = 'TAHUN:'; sheet.getCell('D5').value = stdYear.toUpperCase(); sheet.getCell('D5').font = { bold: true };
+            sheet.getCell('C6').value = 'KELAS:'; sheet.getCell('D6').value = fullClassName; sheet.getCell('D6').font = { size: 14, bold: true, color: { argb: 'FF0000FF' } };
+
+            sheet.getRow(8).height = 10;
+            const h1 = sheet.getRow(9); const h2 = sheet.getRow(10);
+            h1.height = 30; h2.height = 20;
+
+            sheet.getCell('A9').value = 'BIL'; sheet.mergeCells('A9:A10');
+            sheet.getCell('B9').value = 'NAMA MURID'; sheet.mergeCells('B9:B10');
+            sheet.getCell('C9').value = 'NO. KAD PENGENALAN'; sheet.mergeCells('C9:C10');
+
+            ['A','B','C'].forEach(col => {
+              const c = sheet.getCell(`${col}9`); c.font = { bold: true, size: 10 }; c.alignment = { vertical: 'middle', horizontal: 'center' };
+              c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD9E1F2' }};
+              c.border = { top: {style:'thin'}, left: {style:'thin'}, bottom: {style:'thin'}, right: {style:'thin'} };
+            });
+            sheet.getColumn('A').width = 5; sheet.getColumn('B').width = 45; sheet.getColumn('C').width = 18;
+
+            let colIndex = 4; 
+            subjects.forEach((sub) => {
+              const startCol = sheet.getColumn(colIndex).letter; const endCol = sheet.getColumn(colIndex + 2).letter;
+              sheet.mergeCells(`startCol9:{endCol}9`);
+              const subCell = sheet.getCell(`${startCol}9`);
+              subCell.value = sub.toUpperCase(); subCell.font = { bold: true, size: 9 }; subCell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+              subCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2EFDA' }};
+              subCell.border = { top: {style:'thin'}, left: {style:'thin'}, bottom: {style:'thin'}, right: {style:'thin'} };
+
+              ['M', 'G', 'TP'].forEach((lbl, idx) => {
+                const subH = sheet.getCell(`${sheet.getColumn(colIndex + idx).letter}10`);
+                subH.value = lbl; subH.font = { bold: true, size: 9 }; subH.alignment = { vertical: 'middle', horizontal: 'center' };
+                subH.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF2F2F2' }};
+                subH.border = { top: {style:'thin'}, left: {style:'thin'}, bottom: {style:'thin'}, right: {style:'thin'} };
+                sheet.getColumn(colIndex + idx).width = 5; 
+              });
+              colIndex += 3;
+            });
+
+            let rowNum = 11;
+            classStudents.forEach((std, stdIdx) => {
+              const row = sheet.getRow(rowNum);
+              row.getCell(1).value = stdIdx + 1; row.getCell(2).value = std.name; row.getCell(3).value = std.ic;
+              for(let i=1; i<=3; i++) {
+                const c = row.getCell(i); c.border = { top: {style:'thin'}, left: {style:'thin'}, bottom: {style:'thin'}, right: {style:'thin'} };
+                c.alignment = { vertical: 'middle', horizontal: i===2 ? 'left' : 'center' }; c.font = { size: 10 };
+              }
+
+              let currentDataCol = 4;
+              subjects.forEach(sub => {
+                const rec = pbdRecords.find(r => r.studentIc === std.ic && r.academicYear === viewYear && r.examType === viewExam && r.subject === sub);
+                const mC = row.getCell(currentDataCol); const gC = row.getCell(currentDataCol + 1); const tpC = row.getCell(currentDataCol + 2);
+
+                if (rec && rec.mark !== undefined && rec.mark !== '') {
+                  mC.value = rec.mark; gC.value = calculateDynamicGrade(rec.mark, viewExam, gradingScales).grade; tpC.value = `TP${rec.tp}`; 
+                } else { mC.value = ''; gC.value = ''; tpC.value = ''; }
+
+                [mC, gC, tpC].forEach(c => {
+                  c.border = { top: {style:'thin'}, left: {style:'thin'}, bottom: {style:'thin'}, right: {style:'thin'} };
+                  c.alignment = { vertical: 'middle', horizontal: 'center' }; c.font = { size: 10 };
+                });
+                currentDataCol += 3;
+              });
+              rowNum++;
+            });
+            sheet.views = [{ state: 'frozen', xSplit: 3, ySplit: 10 }];
+            sheet.headerFooter.oddFooter = '&C Muka Surat &P daripada &N';
+            sheetsCreated++;
+          }
+          if (sheetsCreated === 0) { notify('Gagal menjana helaian Excel.', 'error'); return; }
+          const buffer = await workbook.xlsx.writeBuffer();
+          const fileName = `REKOD_MARKAH_${viewExam.replace(/[^a-zA-Z0-9]/g, '_')}_${viewYear.replace('/', '_')}.xlsx`;
+          saveAs(new Blob([buffer]), fileName);
+          notify('Muat turun berjaya!', 'success');
+        } catch (error) { console.error(error); notify('Ralat semasa menjana Excel.', 'error'); }
+      };
+
+      return (
+        <div className="space-y-6">
+          <div className="flex flex-col lg:flex-row gap-6">
+            <div className="flex-1 bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+              <h2 className="text-2xl font-bold text-blue-950">Dashboard Analisis & Eksport</h2>
+              <p className="text-slate-500 text-sm mt-0.5 mb-6">Pilih tetapan untuk dipaparkan dan dieksport ke format Excel profesional.</p>
+              
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 bg-slate-50 p-4 rounded-xl border border-slate-100">
+                <div className="lg:col-span-1"><label className="block text-xs font-bold text-slate-700 mb-1">Sesi Persekolahan</label><select value={viewYear} onChange={e=>setViewYear(e.target.value)} className="w-full border p-2 rounded-lg text-xs font-bold bg-white text-slate-800">{academicYears.map(y => <option key={y} value={y}>{y}</option>)}</select></div>
+                <div className="lg:col-span-1"><label className="block text-xs font-bold text-slate-700 mb-1">Jenis Pentaksiran</label><select value={viewExam} onChange={e=>setViewExam(e.target.value)} className="w-full border p-2 rounded-lg text-xs font-bold bg-white text-slate-800">{examTypes.map(ex => <option key={ex.name} value={ex.name}>{ex.name}</option>)}</select></div>
+                <div className="lg:col-span-1"><label className="block text-[10px] font-bold text-slate-700 mb-1">Tapis Tahun (Muat Turun)</label><select value={exportStdYear} onChange={e=>setExportStdYear(e.target.value)} className="w-full border p-2 rounded-lg text-xs font-bold bg-white text-blue-800 border-blue-200"><option value="SEMUA TAHUN">SEMUA TAHUN</option>{tahunList.map(y => <option key={y} value={y}>{y}</option>)}</select></div>
+                <div className="lg:col-span-1"><label className="block text-[10px] font-bold text-slate-700 mb-1">Tapis Kelas (Muat Turun)</label><select value={exportBaseClass} onChange={e=>setExportBaseClass(e.target.value)} className="w-full border p-2 rounded-lg text-xs font-bold bg-white text-blue-800 border-blue-200"><option value="SEMUA KELAS">SEMUA KELAS</option>{classes.map(c => <option key={c} value={c}>{c}</option>)}</select></div>
+                <div className="lg:col-span-1 flex items-end"><button onClick={handleDownloadExcel} className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 rounded-lg text-xs flex items-center justify-center gap-1.5 shadow-sm transition-colors h-[38px]"><Icon name="download" size={16} /> Eksport (.xlsx)</button></div>
+              </div>
+
+              <div className="mt-8">
+                <h3 className="text-sm font-bold text-slate-800 border-b pb-2 mb-4">Carta Analisis Pengisian Markah Guru (Matriks)</h3>
+                {Object.keys(analysisDataByYear).length > 0 ? Object.keys(analysisDataByYear).sort((a,b) => tahunList.indexOf(a) - tahunList.indexOf(b)).map(year => {
+                  const classesData = analysisDataByYear[year].sort((a,b) => a.className.localeCompare(b.className));
+                  const subjects = subjectsByYear[year] || [];
+                  const abbrs = subjectAbbreviations || {};
+                  return (
+                    <div key={year} className="mb-6 border border-slate-200 rounded-xl bg-white shadow-sm overflow-hidden">
+                      <div className="bg-blue-900 text-amber-400 font-bold px-4 py-2 text-xs uppercase tracking-wider flex items-center justify-between"><span>{year}</span><span className="text-[10px] font-normal text-blue-200">Kemas kini masa nyata</span></div>
+                      <div className="w-full overflow-x-auto">
+                        <table className="w-full text-left text-xs border-collapse">
+                          <thead className="bg-slate-100 text-slate-600 font-bold border-b">
+                            <tr>
+                              <th rowSpan="2" className="p-2 w-20 sm:w-28 border-r border-slate-200 truncate align-middle">KELAS</th>
+                              {subjects.map(sub => (
+                                <th key={sub} colSpan="2" className="p-1 text-center border-r border-b border-slate-200 truncate text-[9px] sm:text-xs" title={sub}>{abbrs[sub] || sub}</th>
+                              ))}
+                            </tr>
+                            <tr>
+                              {subjects.map(sub => (
+                                <Fragment key={sub + "_subcols"}>
+                                  <th className="p-1 text-center border-r border-slate-200 text-[8px] sm:text-[10px] bg-slate-50 font-black text-blue-900 w-10 sm:w-12">M</th>
+                                  <th className="p-1 text-center border-r border-slate-200 text-[8px] sm:text-[10px] bg-slate-50 font-black text-emerald-800 w-10 sm:w-12">TP</th>
+                                </Fragment>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100">
+                            {classesData.map(cls => (
+                              <tr key={cls.className} className="hover:bg-slate-50">
+                                <td className="p-2 font-extrabold text-blue-900 border-r border-slate-200 bg-slate-50/50 truncate" title={cls.className}>{cls.className}<span className="block text-[9px] text-slate-400 font-medium mt-0.5 truncate">{cls.studentsCount} Murid</span></td>
+                                {cls.subjectStatus.map((status, idx) => (
+                                  <Fragment key={idx}>
+                                    <td className="p-1 sm:p-1.5 text-center border-r border-slate-200">
+                                      {status.isMarkComplete ? (
+                                        <div className="flex justify-center text-emerald-500" title="Markah Selesai"><Icon name="check" size={18}/></div>
+                                      ) : (
+                                        <div className="flex flex-col items-center justify-center text-red-500" title="Markah Belum Selesai">
+                                          <Icon name="x" size={14} className="mb-0.5"/>
+                                          <span className="text-[9px] font-bold">{status.markFilledCount}/{status.total}</span>
+                                        </div>
+                                      )}
+                                    </td>
+                                    <td className="p-1 sm:p-1.5 text-center border-r border-slate-200">
+                                      {status.isTpComplete ? (
+                                        <div className="flex justify-center text-emerald-500" title="TP Selesai"><Icon name="check" size={18}/></div>
+                                      ) : (
+                                        <div className="flex flex-col items-center justify-center text-red-500" title="TP Belum Selesai">
+                                          <Icon name="x" size={14} className="mb-0.5"/>
+                                          <span className="text-[9px] font-bold">{status.tpFilledCount}/{status.total}</span>
+                                        </div>
+                                      )}
+                                    </td>
+                                  </Fragment>
+                                ))}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )
+                }) : (
+                  <p className="text-xs text-slate-500 italic p-4 bg-slate-50 border border-slate-200 rounded-xl">Tiada kelas & murid direkodkan untuk Sesi / Pentaksiran ini.</p>
+                )}
+              </div>
+            </div>
+
+            <div className="w-full lg:w-80 bg-white p-6 rounded-2xl shadow-sm border border-slate-200 self-start">
+              <h3 className="font-bold text-blue-950 border-b pb-2 mb-4">Tetapan Logo Sekolah (Lutsinar)</h3>
+              <div className="flex flex-col items-center justify-center p-4 border-2 border-dashed border-slate-300 rounded-xl bg-slate-50 relative group">
+                {schoolLogo ? (
+                  <div className="relative w-full flex flex-col items-center">
+                    <img src={schoolLogo} alt="Logo" className="w-28 h-28 object-contain mb-3 drop-shadow" />
+                    <button onClick={() => { setSchoolLogo(''); notify('Logo dibuang', 'info'); }} className="bg-red-100 text-red-600 px-3 py-1.5 rounded text-xs font-bold hover:bg-red-200 flex gap-1"><Icon name="trash" size={14} /> Padam</button>
+                  </div>
+                ) : (
+                  <div className="text-center py-4">
+                    <div className="bg-blue-100 text-blue-600 w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-2"><Icon name="image" size={24} /></div>
+                    <p className="text-xs text-slate-500 mb-2">Muat naik logo berlatar belakang lutsinar (PNG).</p>
+                    <label className="cursor-pointer bg-blue-900 text-amber-400 px-4 py-2 rounded-lg text-xs font-bold inline-block hover:bg-blue-950">
+                      Pilih Imej <input type="file" className="hidden" accept="image/*" onChange={handleLogoUpload} />
+                    </label>
+                  </div>
+                )}
+              </div>
+              <p className="text-[10px] text-slate-400 mt-3 text-center leading-tight">Logo ini akan terpapar besar pada antaramuka Log Masuk dan Slip Murid.</p>
+            </div>
+          </div>
+        </div>
+      );
+    };
+
+    const TetapanPeperiksaan = ({ academicYears, setAcademicYears, examTypes, setExamTypes, classes, examStatuses = {}, setExamStatuses, slipStatuses = {}, setSlipStatuses, notify }) => {
+      const [newYear, setNewYear] = useState('');
+      const [newExam, setNewExam] = useState('');
+      const [selectedStatusYear, setSelectedStatusYear] = useState(academicYears[0] || '');
+      
+      const shortYearMap = {
+        'TAHUN SATU': '1', 'TAHUN DUA': '2', 'TAHUN TIGA': '3',
+        'TAHUN EMPAT': '4', 'TAHUN LIMA': '5', 'TAHUN ENAM': '6',
+        'KELAS KHAS RENDAH': 'PK'
+      };
+      
+      const addYear = () => { if(newYear.trim()) { setAcademicYears([...academicYears, newYear.trim().toUpperCase()]); setNewYear(''); notify('Sesi ditambah!', 'success'); } };
+      const handleDeleteYear = (idx) => { setAcademicYears(academicYears.filter((_, i) => i !== idx)); notify('Sesi dipadam', 'success'); };
+
+      const addExam = () => { if(newExam.trim()) { setExamTypes([...examTypes, { name: newExam.trim().toUpperCase(), classes: [] }]); setNewExam(''); notify('Pentaksiran ditambah!', 'success'); } };
+      const handleDeleteExam = (idx) => { setExamTypes(examTypes.filter((_, i) => i !== idx)); notify('Pentaksiran dipadam', 'success'); };
+      
+      const toggleExamClass = (examIdx, fullClassName) => {
+        const updated = [...examTypes];
+        const exam = updated[examIdx];
+        if (exam.classes.includes(fullClassName)) { exam.classes = exam.classes.filter(c => c !== fullClassName); } else { exam.classes.push(fullClassName); }
+        setExamTypes(updated);
+      };
+
+      const handleSelectAll = (examIdx) => {
+        const updated = [...examTypes];
+        const allPermutations = [];
+        tahunList.forEach(y => classes.forEach(c => allPermutations.push(getFullClassName(y, c))));
+        updated[examIdx].classes = allPermutations;
+        setExamTypes(updated);
+      };
+
+      const handleClearAll = (examIdx) => {
+        const updated = [...examTypes];
+        updated[examIdx].classes = [];
+        setExamTypes(updated);
+      };
+
+      const toggleExamStatus = (year, examName) => {
+        const key = `${year}_${examName}`;
+        const current = examStatuses[key] || 'ON';
+        const next = current === 'ON' ? 'OFF' : 'ON';
+        setExamStatuses({ ...examStatuses, [key]: next });
+        notify(`Status Kemasukan Markah Guru [${examName}] ditukar kepada ${next}`, next === 'ON' ? 'success' : 'error');
+      };
+
+      const toggleSlipStatus = (year, examName) => {
+        const key = `${year}_${examName}`;
+        const current = slipStatuses[key] || 'OFF'; 
+        const next = current === 'ON' ? 'OFF' : 'ON';
+        setSlipStatuses({ ...slipStatuses, [key]: next });
+        notify(`Status Paparan Slip Ibu Bapa [${examName}] ditukar kepada ${next}`, next === 'ON' ? 'success' : 'info');
+      };
+
+      return (
+        <div className="space-y-6 max-w-5xl mx-auto">
+          <div className="flex flex-col md:flex-row justify-between items-center gap-4 border-b-2 border-amber-400 pb-2">
+            <h2 className="text-2xl font-bold text-blue-950">Sesi & Pentaksiran</h2>
+            <select value={selectedStatusYear} onChange={e=>setSelectedStatusYear(e.target.value)} className="border p-2 rounded-xl text-sm font-black bg-white text-blue-900 border-blue-200 shadow-sm min-w-[200px]">
+              {academicYears.map(y => <option key={y} value={y}>Tetapan: {y}</option>)}
+            </select>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
+              <h3 className="font-extrabold text-sm text-blue-950 uppercase border-b pb-2 mb-3">Kawalan Kemasukan Markah (Guru)</h3>
+              <p className="text-[10px] text-slate-500 mb-4">Buka (ON) atau kunci (OFF) kebenaran isi/ubah markah.</p>
+              
+              <div className="space-y-3">
+                {examTypes.map((ex) => {
+                  const key = `${selectedStatusYear}_${ex.name}`;
+                  const isOn = (examStatuses[key] || 'ON') === 'ON';
+                  return (
+                    <div key={ex.name} className={`p-3 rounded-xl border flex justify-between items-center transition-all ${isOn ? 'bg-emerald-50/60 border-emerald-200' : 'bg-red-50/60 border-red-200'}`}>
+                      <div className="font-extrabold text-[10px] text-slate-800 uppercase flex-1 pr-2">{ex.name}</div>
+                      <button onClick={() => toggleExamStatus(selectedStatusYear, ex.name)} className={`px-3 py-1.5 rounded-lg text-[10px] font-black shadow-sm transition-all flex items-center gap-1.5 shrink-0 ${isOn ? 'bg-emerald-600 hover:bg-emerald-700 text-white' : 'bg-red-600 hover:bg-red-700 text-white'}`}>
+                        <span className={`w-2 h-2 rounded-full ${isOn ? 'bg-amber-300 animate-pulse' : 'bg-white'}`}></span> {isOn ? 'DIBUKA' : 'DITUTUP'}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
+              <h3 className="font-extrabold text-sm text-purple-900 uppercase border-b pb-2 mb-3">Kawalan Paparan Slip (Ibu Bapa)</h3>
+              <p className="text-[10px] text-slate-500 mb-4">Benarkan (ON) slip keputusan dilihat. Lalai adalah OFF.</p>
+              
+              <div className="space-y-3">
+                {examTypes.map((ex) => {
+                  const key = `${selectedStatusYear}_${ex.name}`;
+                  const isPublished = (slipStatuses[key] || 'OFF') === 'ON';
+                  return (
+                    <div key={ex.name} className={`p-3 rounded-xl border flex justify-between items-center transition-all ${isPublished ? 'bg-blue-50/60 border-blue-200' : 'bg-slate-100 border-slate-200'}`}>
+                      <div className="font-extrabold text-[10px] text-slate-800 uppercase flex-1 pr-2">{ex.name}</div>
+                      <button onClick={() => toggleSlipStatus(selectedStatusYear, ex.name)} className={`px-3 py-1.5 rounded-lg text-[10px] font-black shadow-sm transition-all flex items-center gap-1.5 shrink-0 ${isPublished ? 'bg-blue-700 hover:bg-blue-800 text-white' : 'bg-slate-400 hover:bg-slate-500 text-white'}`}>
+                        <span className={`w-2 h-2 rounded-full ${isPublished ? 'bg-emerald-400 animate-pulse' : 'bg-white'}`}></span> {isPublished ? 'DIBUKA' : 'DITUTUP'}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 pt-4 border-t border-slate-200">
+            <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 lg:col-span-1 h-fit">
+              <h3 className="font-bold text-lg mb-4 text-blue-950">Sesi Akademik</h3>
+              <ul className="space-y-2 mb-4">
+                {academicYears.map((y, idx) => (
+                  <li key={idx} className="flex justify-between items-center p-3 bg-slate-50 rounded-xl border border-slate-100 text-sm font-semibold text-slate-700">
+                    <span>{y}</span><button onClick={() => handleDeleteYear(idx)} className="text-red-600 p-1"><Icon name="trash"/></button>
+                  </li>
+                ))}
+              </ul>
+              <div className="flex gap-2">
+                <input type="text" value={newYear} onChange={e=>setNewYear(e.target.value)} placeholder="Cth: 2027/2028" className="border p-2 rounded-xl flex-1 text-xs bg-white text-slate-800 uppercase" />
+                <button onClick={addYear} className="bg-blue-900 text-amber-400 px-4 rounded-xl text-xs font-bold">Tambah</button>
+              </div>
+            </div>
+
+            <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 lg:col-span-2 space-y-4">
+              <h3 className="font-bold text-lg mb-4 text-blue-950">Pentaksiran & Kelas Terlibat</h3>
+              <div className="space-y-4">
+                {examTypes.map((ex, idx) => (
+                  <div key={idx} className="border border-slate-200 rounded-xl p-4 bg-slate-50">
+                    <div className="flex justify-between items-center mb-3 pb-2 border-b border-slate-200">
+                      <h4 className="font-extrabold text-blue-900 text-base uppercase">{ex.name}</h4>
+                      <button onClick={() => handleDeleteExam(idx)} className="text-red-600 p-1.5 hover:bg-red-100 rounded"><Icon name="trash"/></button>
+                    </div>
+                    <div className="mb-3 flex justify-between items-center">
+                      <span className="text-xs font-bold text-slate-500">Pilih gabungan Tahun & Kelas yang terlibat:</span>
+                      <div className="space-x-2">
+                        <button onClick={() => handleSelectAll(idx)} className="text-[10px] bg-slate-200 text-slate-700 px-2 py-1 rounded font-bold hover:bg-slate-300">Pilih Semua</button>
+                        <button onClick={() => handleClearAll(idx)} className="text-[10px] bg-slate-200 text-slate-700 px-2 py-1 rounded font-bold hover:bg-slate-300">Kosongkan</button>
+                      </div>
+                    </div>
+                    <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2 pb-2">
+                      {tahunList.map(tahun => {
+                        return (
+                          <div key={tahun} className="flex flex-col gap-1.5 border-l-2 border-amber-400 pl-3">
+                            <span className="text-[10px] font-bold text-slate-400 uppercase">{tahun}</span>
+                            <div className="flex flex-wrap gap-2">
+                              {classes.map(c => {
+                                const fullClassName = getFullClassName(tahun, c);
+                                const isSelected = ex.classes.includes(fullClassName);
+                                const displayClassName = `${shortYearMap[tahun] || tahun} ${c}`;
+                                return (
+                                  <button key={fullClassName} onClick={() => toggleExamClass(idx, fullClassName)} className={`px-2.5 py-1.5 rounded text-[10px] font-bold transition-colors border ${isSelected ? 'bg-blue-900 text-white border-blue-900 shadow-sm' : 'bg-white text-slate-500 border-slate-300 hover:bg-slate-100'}`}>
+                                    {displayClassName}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="flex gap-2 pt-4 border-t border-slate-100">
+                <input type="text" value={newExam} onChange={e=>setNewExam(e.target.value)} placeholder="Nama Pentaksiran Baru" className="border p-2.5 rounded-xl flex-1 text-xs bg-white text-slate-800 uppercase" />
+                <button onClick={addExam} className="bg-blue-900 text-amber-400 px-4 rounded-xl text-xs font-bold">Tambah</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    };
+
+    const TetapanGred = ({ examTypes, gradingScales, setGradingScales, notify }) => {
+      const [selectedExam, setSelectedExam] = useState(examTypes.length > 0 ? examTypes[0].name : '');
+      
+      const getActiveScale = () => {
+        if (gradingScales && gradingScales[selectedExam] && gradingScales[selectedExam].length > 0) return gradingScales[selectedExam];
+        const fallback = [
+          { min: 82, max: 100, grade: 'A', tp: 6, desc: 'CEMERLANG' },
+          { min: 66, max: 81, grade: 'B', tp: 5, desc: 'SANGAT BAIK' },
+          { min: 50, max: 64, grade: 'C', tp: 4, desc: 'BAIK' },
+          { min: 35, max: 49, grade: 'D', tp: 3, desc: 'MEMUASKAN' },
+          { min: 20, max: 34, grade: 'E', tp: 2, desc: 'MENCAPAI TAHAP MINIMUM' },
+          { min: 0, max: 19, grade: 'F', tp: 1, desc: 'BELUM MENCAPAI TAHAP MINIMUM' }
+        ];
+        return fallback.map(g => ({ ...g })); 
+      };
+
+      const currentScale = getActiveScale();
+
+      const handleUpdateGrade = (index, field, value) => {
+        const updatedScale = currentScale.map((item, i) => {
+          if (i === index) {
+            let parsedValue = value.toUpperCase();
+            if (field === 'min' || field === 'max' || field === 'tp') {
+              parsedValue = value === '' ? '' : parseInt(value);
+              if (isNaN(parsedValue)) parsedValue = '';
+            }
+            return { ...item, [field]: parsedValue };
+          }
+          return item;
+        });
+        setGradingScales({ ...gradingScales, [selectedExam]: updatedScale });
+      };
+      
+      const addGradeRow = () => { setGradingScales({ ...gradingScales, [selectedExam]: [...currentScale, { min: 0, max: 0, grade: 'X', tp: 1, desc: 'HURAIAN' }] }); };
+      const deleteGradeRow = (index) => { setGradingScales({ ...gradingScales, [selectedExam]: currentScale.filter((_, i) => i !== index) }); };
+      const handleSave = () => { notify(`Tetapan gred ${selectedExam} disegerakkan ke pangkalan awan!`, 'success'); };
+
+      if (!selectedExam) return <p className="p-6">Sila tambah pentaksiran dahulu.</p>;
+
+      return (
+        <div className="space-y-6 max-w-4xl mx-auto">
+          <div className="flex flex-col sm:flex-row justify-between sm:items-end border-b-2 border-amber-400 pb-2 gap-4">
+            <h2 className="text-2xl font-bold text-blue-950">Tetapan Julat Markah & Gred</h2>
+            <select value={selectedExam} onChange={e => setSelectedExam(e.target.value)} className="border p-2 rounded-xl text-sm bg-white font-bold text-blue-900 shadow-sm w-full sm:w-auto uppercase">
+              {examTypes.map(ex => <option key={ex.name} value={ex.name}>{ex.name}</option>)}
+            </select>
+          </div>
+          <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-50 border-b border-slate-200 font-bold text-slate-600">
+                  <tr><th className="p-3 text-center">Gred</th><th className="p-3 text-center">Min (0-100)</th><th className="p-3 text-center">Max (0-100)</th><th className="p-3 text-center">Tahap (TP)</th><th className="p-3">Huraian Pencapaian</th><th className="p-3 text-center">Padam</th></tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {currentScale.map((g, idx) => (
+                    <tr key={idx} className="hover:bg-slate-50">
+                      <td className="p-2 text-center"><input type="text" value={g.grade} onChange={e => handleUpdateGrade(idx, 'grade', e.target.value)} className="w-12 border p-2 rounded text-center uppercase font-black text-blue-900 text-sm bg-white border-slate-300 mx-auto" /></td>
+                      <td className="p-2"><input type="number" value={g.min} onChange={e => handleUpdateGrade(idx, 'min', e.target.value)} className="w-16 border p-2 rounded text-center font-mono bg-white mx-auto block" /></td>
+                      <td className="p-2"><input type="number" value={g.max} onChange={e => handleUpdateGrade(idx, 'max', e.target.value)} className="w-16 border p-2 rounded text-center font-mono bg-white mx-auto block" /></td>
+                      <td className="p-2"><input type="number" value={g.tp} onChange={e => handleUpdateGrade(idx, 'tp', e.target.value)} className="w-16 border p-2 rounded text-center font-bold bg-white mx-auto block" min="1" max="6" /></td>
+                      <td className="p-2"><input type="text" value={g.desc} onChange={e => handleUpdateGrade(idx, 'desc', e.target.value)} className="w-full border p-2 rounded bg-white uppercase" /></td>
+                      <td className="p-2 text-center"><button onClick={() => deleteGradeRow(idx)} className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg"><Icon name="trash" size={16} /></button></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="mt-4 flex justify-between items-center pt-4 border-t border-slate-100">
+              <button onClick={addGradeRow} className="bg-blue-50 text-blue-800 font-bold px-4 py-2 rounded-xl text-xs flex items-center gap-2 hover:bg-blue-100"><Icon name="plus" size={14} /> Tambah Baris</button>
+              <button onClick={handleSave} className="bg-emerald-600 text-white font-bold px-6 py-2.5 rounded-xl text-xs flex items-center gap-2 shadow-sm"><Icon name="save" size={16} /> Simpan Gred</button>
+            </div>
+          </div>
+        </div>
+      );
+    };
+
+    const TetapanSubjek = ({ subjectsByYear, setSubjectsByYear, subjectAbbreviations, setSubjectAbbreviations, pbdRecords, setPbdRecords, teachers, setTeachers, notify }) => {
+      const [selectedYear, setSelectedYear] = useState(tahunList[0]);
+      const [newMasterSub, setNewMasterSub] = useState('');
+      const [newMasterAbbr, setNewMasterAbbr] = useState('');
+      const [editingSub, setEditingSub] = useState(null);
+      const [editName, setEditName] = useState('');
+      const [editAbbr, setEditAbbr] = useState('');
+      const [selectedSubjectToAdd, setSelectedSubjectToAdd] = useState('');
+
+      const defaultKpmSubjects = {
+        'BAHASA MELAYU': 'BM', 'BAHASA INGGERIS': 'BI', 'MATEMATIK': 'MT', 'SAINS': 'SN',
+        'PENDIDIKAN ISLAM': 'PI/MO', 'BAHASA ARAB': 'BA', 'SEJARAH': 'SJ',
+        'REKA BENTUK & TEKNOLOGI': 'RBT', 'PENDIDIKAN MUZIK': 'MZ',
+        'PENDIDIKAN SENI VISUAL': 'PSV', 'PENDIDIKAN JASMANI & KESIHATAN': 'PJPK'
+      };
+
+      const loadKpmDefaults = () => {
+        const merged = { ...defaultKpmSubjects, ...subjectAbbreviations };
+        setSubjectAbbreviations(merged);
+        notify('Senarai Subjek KPM dimuatkan ke Senarai Induk!', 'success');
+      };
+
+      const handleAddMaster = () => {
+        const sub = newMasterSub.trim().toUpperCase();
+        const abbr = newMasterAbbr.trim().toUpperCase();
+        if (!sub) return;
+        if (subjectAbbreviations[sub]) { notify('Subjek sudah wujud di Senarai Induk!', 'error'); return; }
+        setSubjectAbbreviations({ ...subjectAbbreviations, [sub]: abbr });
+        setNewMasterSub(''); setNewMasterAbbr('');
+        notify(`Subjek ditambah ke Senarai Induk!`, 'success');
+      };
+
+      const handleSaveEditMaster = (oldName) => {
+        const newName = editName.trim().toUpperCase();
+        const newAbbr = editAbbr.trim().toUpperCase();
+        if(!newName) return;
+        if(newName !== oldName && subjectAbbreviations[newName]) { notify('Nama subjek baharu sudah wujud!', 'error'); return; }
+
+        const newAbbrMap = { ...subjectAbbreviations };
+        if (newName !== oldName) delete newAbbrMap[oldName];
+        newAbbrMap[newName] = newAbbr;
+        setSubjectAbbreviations(newAbbrMap);
+
+        if (newName !== oldName) {
+          const newSubjectsByYear = {};
+          for (const year in subjectsByYear) {
+            newSubjectsByYear[year] = (subjectsByYear[year] || []).map(s => s === oldName ? newName : s);
+          }
+          setSubjectsByYear(newSubjectsByYear);
+          const updatedPbd = pbdRecords.map(r => r.subject === oldName ? {...r, subject: newName} : r);
+          setPbdRecords(updatedPbd);
+          const updatedTeachers = teachers.map(t => ({
+            ...t, assignments: t.assignments.map(a => a.subject === oldName ? {...a, subject: newName} : a)
+          }));
+          setTeachers(updatedTeachers);
+        }
+
+        setEditingSub(null);
+        notify('Subjek Induk & Data Berkaitan Dikemaskini!', 'success');
+      };
+
+      const handleDeleteMaster = (name) => {
+        const isUsed = Object.values(subjectsByYear).some(list => list.includes(name));
+        if (isUsed) { notify('Gagal: Subjek ini masih digunakan dalam susunan Tahun! Buang dari Tahun dahulu.', 'error'); return; }
+        const newAbbrMap = { ...subjectAbbreviations };
+        delete newAbbrMap[name];
+        setSubjectAbbreviations(newAbbrMap);
+        notify('Dipadam dari Senarai Induk', 'success');
+      };
+
+      const handleMove = (idx, direction) => {
+        const list = [...(subjectsByYear[selectedYear] || [])];
+        if (direction === -1 && idx > 0) {
+          [list[idx - 1], list[idx]] = [list[idx], list[idx - 1]];
+        } else if (direction === 1 && idx < list.length - 1) {
+          [list[idx + 1], list[idx]] = [list[idx], list[idx + 1]];
+        }
+        setSubjectsByYear({ ...subjectsByYear, [selectedYear]: list });
+      };
+
+      const handleRemoveFromYear = (idx) => {
+        const list = [...(subjectsByYear[selectedYear] || [])];
+        list.splice(idx, 1);
+        setSubjectsByYear({ ...subjectsByYear, [selectedYear]: list });
+      };
+
+      const handleAddToYear = () => {
+        if (!selectedSubjectToAdd) return;
+        const list = [...(subjectsByYear[selectedYear] || [])];
+        if (!list.includes(selectedSubjectToAdd)) {
+          list.push(selectedSubjectToAdd);
+          setSubjectsByYear({ ...subjectsByYear, [selectedYear]: list });
+        }
+        setSelectedSubjectToAdd('');
+      };
+
+      const availableToAdd = Object.keys(subjectAbbreviations).filter(s => !(subjectsByYear[selectedYear] || []).includes(s)).sort();
+
+      return (
+        <div className="space-y-8 max-w-6xl mx-auto">
+          <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+            <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 mb-4 border-b border-slate-100 pb-3">
+              <h3 className="text-xl font-bold text-blue-950">1. Senarai Induk Subjek & Singkatan</h3>
+              <button onClick={loadKpmDefaults} className="bg-slate-800 text-white px-5 py-2.5 rounded-xl text-xs font-bold hover:bg-slate-700 transition-colors shadow-sm">Jana Subjek Asas KPM</button>
+            </div>
+            
+            <div className="flex flex-col sm:flex-row gap-2 mb-6 bg-slate-50 p-4 rounded-xl border border-slate-200">
+              <input type="text" value={newMasterSub} onChange={e => setNewMasterSub(e.target.value)} placeholder="Nama Subjek Penuh (Cth: BAHASA MELAYU)" className="border border-slate-300 p-2.5 rounded-xl text-xs flex-1 bg-white uppercase" />
+              <input type="text" value={newMasterAbbr} onChange={e => setNewMasterAbbr(e.target.value)} placeholder="Singkatan (Cth: BM)" className="border border-slate-300 p-2.5 rounded-xl text-xs w-full sm:w-40 bg-white uppercase font-mono" />
+              <button onClick={handleAddMaster} className="bg-blue-900 text-amber-400 px-6 py-2.5 rounded-xl text-xs font-bold shadow-sm">Tambah Induk</button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 max-h-[320px] overflow-y-auto pr-2 pb-2">
+              {Object.keys(subjectAbbreviations).sort().map(sub => {
+                const abbr = subjectAbbreviations[sub];
+                if (editingSub === sub) {
+                  return (
+                    <div key={sub} className="flex flex-col gap-2 p-3 bg-blue-50 border border-blue-200 rounded-xl text-sm animate-fadeIn shadow-sm">
+                      <input type="text" value={editName} onChange={e=>setEditName(e.target.value)} className="border border-slate-300 p-1.5 rounded text-xs uppercase font-bold text-blue-900 w-full bg-white" placeholder="Nama Subjek"/>
+                      <div className="flex gap-2">
+                        <input type="text" value={editAbbr} onChange={e=>setEditAbbr(e.target.value)} className="border border-slate-300 p-1.5 rounded text-xs uppercase font-mono w-24 bg-white" placeholder="Singkatan"/>
+                        <button onClick={()=>handleSaveEditMaster(sub)} className="bg-emerald-600 text-white p-1.5 rounded text-xs flex-1 font-bold shadow-sm">Simpan</button>
+                        <button onClick={()=>setEditingSub(null)} className="bg-slate-400 text-white p-1.5 rounded shadow-sm"><Icon name="x" size={14}/></button>
+                      </div>
+                    </div>
+                  );
+                }
+                return (
+                  <div key={sub} className="flex justify-between items-center p-3 bg-white border border-slate-200 rounded-xl text-sm group shadow-sm hover:border-blue-400 transition-colors">
+                    <div className="truncate pr-3">
+                      <div className="font-extrabold text-slate-800 text-xs truncate" title={sub}>{sub}</div>
+                      <div className="text-[10px] text-slate-500 font-mono mt-0.5">Singkatan: <span className="font-bold text-blue-700 bg-blue-50 px-1 rounded">{abbr || '-'}</span></div>
+                    </div>
+                    <div className="flex gap-1.5 shrink-0 opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button onClick={()=>{setEditingSub(sub); setEditName(sub); setEditAbbr(abbr||'');}} className="text-blue-600 p-1.5 hover:bg-blue-100 rounded-lg bg-slate-50"><Icon name="edit" size={14} /></button>
+                      <button onClick={()=>handleDeleteMaster(sub)} className="text-red-600 p-1.5 hover:bg-red-100 rounded-lg bg-slate-50"><Icon name="trash" size={14} /></button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+            <h3 className="text-xl font-bold text-blue-950 mb-4 border-b border-slate-100 pb-2">2. Susunan Subjek Mengikut Tahun</h3>
+            <div className="flex flex-wrap gap-2 mb-6">
+              {tahunList.map(year => (
+                <button key={year} onClick={() => setSelectedYear(year)} className={`px-4 py-2 text-xs font-bold rounded-xl transition-all ${selectedYear === year ? 'bg-blue-900 text-amber-400 shadow-md' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
+                  {year}
+                </button>
+              ))}
+            </div>
+            
+            <div className="flex flex-col sm:flex-row gap-3 mb-6 bg-slate-50 p-4 rounded-xl border border-slate-200">
+              <select value={selectedSubjectToAdd} onChange={e=>setSelectedSubjectToAdd(e.target.value)} className="border border-slate-300 p-2.5 rounded-xl text-xs flex-1 bg-white font-medium text-slate-700">
+                <option value="">-- Pilih subjek dari Senarai Induk --</option>
+                {availableToAdd.map(s => <option key={s} value={s}>{s} ({subjectAbbreviations[s]})</option>)}
+              </select>
+              <button onClick={handleAddToYear} disabled={!selectedSubjectToAdd} className="bg-emerald-600 text-white px-8 py-2.5 rounded-xl text-xs font-bold shadow-sm disabled:opacity-50 disabled:cursor-not-allowed">Masukkan Ke {selectedYear}</button>
+            </div>
+
+            <div className="bg-slate-50 p-5 rounded-xl border border-slate-200">
+              <h4 className="text-xs font-extrabold text-blue-900 mb-4 uppercase tracking-wider flex items-center gap-2">Susunan Subjek Paparan ({selectedYear})</h4>
+              {(subjectsByYear[selectedYear] || []).length === 0 ? (
+                <p className="text-xs italic text-slate-500 bg-white p-4 rounded-lg border border-slate-200 text-center">Belum ada subjek yang dipilih untuk dimasukkan bagi {selectedYear}.</p>
+              ) : (
+                <div className="space-y-2">
+                  {(subjectsByYear[selectedYear] || []).map((sub, idx) => (
+                    <div key={sub} className="flex justify-between items-center bg-white p-3 rounded-xl border border-slate-200 shadow-sm hover:border-blue-300 transition-colors group">
+                      <div className="flex items-center gap-4">
+                        <span className="bg-blue-100 text-blue-900 w-7 h-7 flex items-center justify-center rounded-lg font-black text-[11px] shrink-0">{idx + 1}</span>
+                        <div>
+                          <div className="font-extrabold text-slate-800 text-xs uppercase">{sub}</div>
+                          <div className="text-[10px] text-slate-500 font-mono mt-0.5">Singkatan: <strong className="text-blue-700">{subjectAbbreviations[sub] || '-'}</strong></div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <button onClick={()=>handleMove(idx, -1)} disabled={idx===0} className="p-1.5 text-slate-600 hover:bg-slate-100 rounded-lg disabled:opacity-20 disabled:hover:bg-transparent transition-colors" title="Gerak Ke Atas">⬆️</button>
+                        <button onClick={()=>handleMove(idx, 1)} disabled={idx===(subjectsByYear[selectedYear]||[]).length-1} className="p-1.5 text-slate-600 hover:bg-slate-100 rounded-lg disabled:opacity-20 disabled:hover:bg-transparent transition-colors" title="Gerak Ke Bawah">⬇️</button>
+                        <div className="w-px h-5 bg-slate-300 mx-2"></div>
+                        <button onClick={()=>handleRemoveFromYear(idx)} className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Buang dari Tahun"><Icon name="x" size={16}/></button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      );
+    };
+
+    const TetapanKelas = ({ classes, setClasses, notify }) => {
+      const [newClass, setNewClass] = useState('');
+      const addClass = () => {
+        if (!newClass.trim()) return;
+        const cls = newClass.trim().toUpperCase();
+        if (classes.includes(cls)) { notify('Kelas wujud!', 'error'); return; }
+        setClasses([...classes, cls].sort()); setNewClass(''); notify('Kelas ditambah', 'success');
+      };
+      const deleteClass = (idx) => { setClasses(classes.filter((_, i) => i !== idx)); notify('Dipadam', 'success'); };
+
+      return (
+        <div className="space-y-6">
+          <h2 className="text-2xl font-bold text-blue-950 border-b-2 border-amber-400 pb-2">Senarai Induk Nama Kelas</h2>
+          <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+            <p className="text-xs text-slate-500 mb-4 bg-amber-50 p-3 rounded-xl border border-amber-100 font-medium">Sila masukkan NAMA ASAS kelas sahaja (Contoh: ARIF, ABRAR). Sistem akan menggabungkannya secara automatik dengan Tahun (Contoh: TAHUN SATU ARIF).</p>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+              {classes.map((c, idx) => (
+                <div key={idx} className="flex justify-between items-center p-3 rounded-xl border border-slate-200 bg-slate-50 text-sm font-semibold">
+                  <span>{c}</span><button onClick={() => deleteClass(idx)} className="text-red-600 p-1 bg-white rounded"><Icon name="trash" size={14}/></button>
+                </div>
+              ))}
+            </div>
+            <div className="flex gap-2 max-w-sm">
+              <input type="text" value={newClass} onChange={e => setNewClass(e.target.value)} placeholder="Cth: ARIF" className="border p-2.5 rounded-xl text-xs flex-1 uppercase" />
+              <button onClick={addClass} className="bg-blue-900 text-amber-400 px-4 py-2.5 rounded-xl text-xs font-bold">Tambah Kelas</button>
+            </div>
+          </div>
+        </div>
+      );
+    };
+
+    const PengurusanMurid = ({ students, setStudents, pbdRecords = [], setPbdRecords, classes, academicYears, examTypes, notify }) => {
+      const [viewYear, setViewYear] = useState(academicYears[0] || '');
+      const [viewExam, setViewExam] = useState(examTypes[0]?.name || '');
+      const [searchQuery, setSearchQuery] = useState('');
+      const [selectedYearFilter, setSelectedYearFilter] = useState('ALL');
+      const [selectedClassFilter, setSelectedClassFilter] = useState('ALL');
+      const [isAdding, setIsAdding] = useState(false);
+      const [isBulkAdding, setIsBulkAdding] = useState(false);
+      const [bulkData, setBulkData] = useState('');
+      const [isCopying, setIsCopying] = useState(false);
+      const [copySourceYear, setCopySourceYear] = useState(academicYears[0] || '');
+      const [copySourceExam, setCopySourceExam] = useState(examTypes[0]?.name || '');
+
+      const [selectedIcs, setSelectedIcs] = useState([]);
+      const [newIc, setNewIc] = useState('');
+      const [newName, setNewName] = useState('');
+      const [newYearStd, setNewYearStd] = useState(tahunList[0]);
+      const [newClassName, setNewClassName] = useState(classes[0] || '');
+
+      const currentStudents = useMemo(() => students.filter(s => s.academicYear === viewYear && s.examType === viewExam), [students, viewYear, viewExam]);
+
+      const filteredStudents = useMemo(() => {
+        return currentStudents.filter(s => {
+          const matchSearch = s.name.includes(searchQuery.toUpperCase()) || s.ic.includes(searchQuery);
+          const matchYear = selectedYearFilter === 'ALL' || s.year === selectedYearFilter;
+          const matchClass = selectedClassFilter === 'ALL' || s.className === selectedClassFilter;
+          return matchSearch && matchYear && matchClass;
+        }).sort((a,b)=>a.name.localeCompare(b.name));
+      }, [currentStudents, searchQuery, selectedYearFilter, selectedClassFilter]);
+
+      useEffect(() => { setSelectedIcs([]); }, [viewYear, viewExam, searchQuery, selectedYearFilter, selectedClassFilter]);
+
+      const handleToggleSelectAll = () => {
+        if (selectedIcs.length === filteredStudents.length && filteredStudents.length > 0) { setSelectedIcs([]); } 
+        else { setSelectedIcs(filteredStudents.map(s => s.ic)); }
+      };
+
+      const handleToggleSelectOne = (ic) => {
+        if (selectedIcs.includes(ic)) { setSelectedIcs(selectedIcs.filter(id => id !== ic)); } 
+        else { setSelectedIcs([...selectedIcs, ic]); }
+      };
+
+      const handleBulkDelete = () => {
+        if (selectedIcs.length === 0) return;
+        if (window.confirm(`ADAKAH ANDA PASTI MAHU MEMADAM ${selectedIcs.length} MURID YANG DIPILIH?\n\nAMARAN: Semua rekod markah PBD bagi murid-murid ini dalam sesi (${viewYear} - ${viewExam}) juga akan dipadamkan secara kekal dari pangkalan data!`)) {
+          const deleteSet = new Set(selectedIcs);
+          const newStudents = students.filter(s => !(deleteSet.has(s.ic) && s.academicYear === viewYear && s.examType === viewExam));
+          setStudents(newStudents);
+          if (setPbdRecords) {
+            const newPbd = pbdRecords.filter(r => !(deleteSet.has(r.studentIc) && r.academicYear === viewYear && r.examType === viewExam));
+            setPbdRecords(newPbd);
+          }
+          notify(`${selectedIcs.length} murid dan rekod markah berkaitan berjaya dipadam!`, 'success');
+          setSelectedIcs([]);
+        }
+      };
+
+      const handleAddStudent = (e) => {
+        e.preventDefault();
+        const cleanIc = newIc.replace(/[^0-9]/g, '');
+        if (currentStudents.some(s => s.ic === cleanIc)) { notify('IC telah wujud dalam pendaftaran pentaksiran ini!', 'error'); return; }
+        const updated = [...students, { ic: cleanIc, name: newName.trim().toUpperCase(), year: newYearStd, className: newClassName, academicYear: viewYear, examType: viewExam }];
+        setStudents(updated); setNewIc(''); setNewName(''); setIsAdding(false); notify('Murid didaftarkan!', 'success');
+      };
+
+      const handleBulkAdd = () => {
+        if(!bulkData.trim()) return;
+        const rows = bulkData.split('\n');
+        const newStudents = [];
+        let errors = 0;
+
+        rows.forEach(row => {
+          const rawCols = row.split(/[\t,;]+|\|/);
+          if (rawCols.length >= 4) {
+             const cols = rawCols.map(c => c.trim().toUpperCase().replace(/^"|"$/g, ''));
+             const name = cols[0]; const ic = cols[1].replace(/[^0-9]/g, ''); const stdY = cols[2]; const cName = cols[3];
+             if(name && ic && tahunList.includes(stdY) && classes.includes(cName) && !currentStudents.some(s=>s.ic===ic) && !newStudents.some(s=>s.ic===ic)) {
+               newStudents.push({ name, ic, year: stdY, className: cName, academicYear: viewYear, examType: viewExam });
+             } else { errors++; }
+          }
+        });
+
+        if(newStudents.length > 0) {
+          setStudents([...students, ...newStudents]); setBulkData(''); setIsBulkAdding(false);
+          notify(`${newStudents.length} murid didaftarkan. ${errors > 0 ? `(${errors} rekod ditolak)` : ''}`, 'success');
+        } else { notify('Tiada data sah dijumpai.', 'error'); }
+      };
+
+      const handleCopyStudents = () => {
+        if (copySourceYear === viewYear && copySourceExam === viewExam) { notify('Sesi sumber dan destinasi tidak boleh sama!', 'error'); return; }
+        const sourceStudents = students.filter(s => s.academicYear === copySourceYear && s.examType === copySourceExam);
+        if(sourceStudents.length === 0) { notify('Tiada murid dijumpai pada sesi sumber tersebut.', 'error'); return; }
+        
+        let copiedCount = 0;
+        const newStds = [...students];
+        sourceStudents.forEach(src => {
+          if (!currentStudents.some(c => c.ic === src.ic)) {
+            newStds.push({ ...src, academicYear: viewYear, examType: viewExam });
+            copiedCount++;
+          }
+        });
+        setStudents(newStds); setIsCopying(false); notify(`${copiedCount} murid berjaya disalin!`, 'success');
+      };
+
+      const handleDeleteStudent = (ic) => {
+        if (window.confirm(`Padam murid IC ${ic} dan rekod markahnya?`)) {
+          setStudents(students.filter(s => !(s.ic === ic && s.academicYear === viewYear && s.examType === viewExam)));
+          if (setPbdRecords) {
+            setPbdRecords(pbdRecords.filter(r => !(r.studentIc === ic && r.academicYear === viewYear && r.examType === viewExam)));
+          }
+          notify('Murid dipadam', 'success');
+        }
+      };
+
+      return (
+        <div className="space-y-6">
+          <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+            <h2 className="text-xl font-bold text-blue-950 mb-4">Pengurusan Rekod & Kelas Murid</h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-slate-50 p-4 rounded-xl border border-slate-100 mb-6">
+              <div><label className="block text-xs font-bold text-slate-700 mb-1">Tetapkan Sesi Pendaftaran</label><select value={viewYear} onChange={e=>setViewYear(e.target.value)} className="w-full border p-2 rounded-lg text-xs font-bold text-blue-900">{academicYears.map(y=><option key={y}>{y}</option>)}</select></div>
+              <div><label className="block text-xs font-bold text-slate-700 mb-1">Tetapkan Pentaksiran Terlibat</label><select value={viewExam} onChange={e=>setViewExam(e.target.value)} className="w-full border p-2 rounded-lg text-xs font-bold text-blue-900">{examTypes.map(ex=><option key={ex.name}>{ex.name}</option>)}</select></div>
+            </div>
+
+            <div className="flex flex-wrap items-center justify-between gap-3 mb-4 border-b pb-4">
+              <div className="flex flex-wrap gap-2">
+                <button onClick={() => { setIsAdding(!isAdding); setIsBulkAdding(false); setIsCopying(false); }} className="bg-blue-900 text-amber-400 px-4 py-2 rounded-xl text-xs font-bold">{isAdding ? 'Batal' : '+ Daftar Murid (Individu)'}</button>
+                <button onClick={() => { setIsBulkAdding(!isBulkAdding); setIsAdding(false); setIsCopying(false); }} className="bg-emerald-600 text-white px-4 py-2 rounded-xl text-xs font-bold">{isBulkAdding ? 'Batal Pukal' : '+ Daftar Pukal'}</button>
+                <button onClick={() => { setIsCopying(!isCopying); setIsAdding(false); setIsBulkAdding(false); }} className="bg-indigo-600 text-white px-4 py-2 rounded-xl text-xs font-bold flex gap-1 items-center"><Icon name="copy" size={14}/> {isCopying ? 'Batal Salin' : 'Salin Dari Sesi Lepas'}</button>
+              </div>
+              {selectedIcs.length > 0 && (
+                <button onClick={handleBulkDelete} className="bg-red-600 hover:bg-red-700 text-white px-5 py-2 rounded-xl text-xs font-extrabold flex items-center gap-1.5 shadow animate-fadeIn">
+                  <Icon name="trash" size={16}/> Padam {selectedIcs.length} Murid Dipilih
+                </button>
+              )}
+            </div>
+
+            {isAdding && (
+              <form onSubmit={handleAddStudent} className="bg-blue-50 p-4 rounded-xl border border-blue-100 grid grid-cols-1 md:grid-cols-4 gap-4 mb-6 animate-fadeIn">
+                <div><label className="text-xs font-bold mb-1 block">Nama Murid</label><input required type="text" value={newName} onChange={e=>setNewName(e.target.value)} className="w-full border p-2 rounded-xl text-xs uppercase" /></div>
+                <div><label className="text-xs font-bold mb-1 block">No Kad Pengenalan</label><input required type="text" value={newIc} onChange={e=>setNewIc(e.target.value)} className="w-full border p-2 rounded-xl text-xs font-mono" placeholder="Tanpa Sempang" /></div>
+                <div><label className="text-xs font-bold mb-1 block">Tahun / Tahap</label><select value={newYearStd} onChange={e=>setNewYearStd(e.target.value)} className="w-full border p-2 rounded-xl text-xs uppercase">{tahunList.map(y=><option key={y}>{y}</option>)}</select></div>
+                <div><label className="text-xs font-bold mb-1 block">Nama Kelas</label><select value={newClassName} onChange={e=>setNewClassName(e.target.value)} className="w-full border p-2 rounded-xl text-xs uppercase">{classes.map(c=><option key={c}>{c}</option>)}</select></div>
+                <div className="md:col-span-4 flex justify-end"><button type="submit" className="bg-emerald-600 text-white px-8 py-2.5 rounded-xl text-xs font-bold">Simpan Pendaftaran</button></div>
+              </form>
+            )}
+
+            {isBulkAdding && (
+              <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 mb-6 animate-fadeIn">
+                <p className="text-xs text-slate-600 mb-2 font-medium">Format: <strong className="text-blue-900">NAMA MURID | NO IC | TAHUN | NAMA KELAS</strong></p>
+                <textarea value={bulkData} onChange={e=>setBulkData(e.target.value)} rows={6} className="w-full border rounded-xl p-3 text-xs font-mono mb-3 uppercase" placeholder="Tampal data Excel di sini..."></textarea>
+                <div className="flex justify-end"><button onClick={handleBulkAdd} className="bg-emerald-600 text-white px-8 py-2.5 rounded-xl text-xs font-bold">Proses & Daftar Pukal</button></div>
+              </div>
+            )}
+
+            {isCopying && (
+              <div className="bg-indigo-50 p-4 rounded-xl border border-indigo-200 mb-6 animate-fadeIn flex flex-wrap gap-4 items-end">
+                <div><label className="block text-xs font-bold text-indigo-900 mb-1">Sesi Lepas (Sumber)</label><select value={copySourceYear} onChange={e=>setCopySourceYear(e.target.value)} className="border p-2 rounded-lg text-xs">{academicYears.map(y=><option key={y}>{y}</option>)}</select></div>
+                <div><label className="block text-xs font-bold text-indigo-900 mb-1">Pentaksiran Lepas (Sumber)</label><select value={copySourceExam} onChange={e=>setCopySourceExam(e.target.value)} className="border p-2 rounded-lg text-xs">{examTypes.map(ex=><option key={ex.name}>{ex.name}</option>)}</select></div>
+                <button onClick={handleCopyStudents} className="bg-indigo-600 text-white px-6 py-2 rounded-xl text-xs font-bold h-[36px]">Laksanakan Salinan</button>
+              </div>
+            )}
+
+            <div className="flex flex-col sm:flex-row gap-3 mb-4">
+              <input type="text" placeholder="Cari Nama/IC..." value={searchQuery} onChange={e=>setSearchQuery(e.target.value)} className="border p-2 rounded-xl text-xs flex-1 uppercase bg-slate-50" />
+              <select value={selectedYearFilter} onChange={e=>setSelectedYearFilter(e.target.value)} className="border p-2 rounded-xl text-xs font-bold bg-slate-50 text-blue-900 w-full sm:w-48">
+                <option value="ALL">Semua Tahun</option>
+                {tahunList.map(y=><option key={y} value={y}>{y}</option>)}
+              </select>
+              <select value={selectedClassFilter} onChange={e=>setSelectedClassFilter(e.target.value)} className="border p-2 rounded-xl text-xs font-bold bg-slate-50 text-blue-900 w-full sm:w-48">
+                <option value="ALL">Semua Kelas ({currentStudents.length})</option>
+                {classes.map(c=><option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+
+            <div className="overflow-x-auto rounded-xl border border-slate-200">
+              <table className="w-full text-left text-xs text-slate-700">
+                <thead className="bg-slate-100 border-b font-bold uppercase text-slate-500">
+                  <tr>
+                    <th className="p-3 w-10 text-center"><input type="checkbox" checked={filteredStudents.length > 0 && selectedIcs.length === filteredStudents.length} onChange={handleToggleSelectAll} className="w-4 h-4 cursor-pointer rounded border-slate-300" /></th>
+                    <th className="p-3 w-12">#</th><th className="p-3">Nama Murid</th><th className="p-3">No IC</th><th className="p-3">Tahap</th><th className="p-3">Nama Kelas</th><th className="p-3 text-center">Tindakan</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {filteredStudents.length > 0 ? filteredStudents.map((s, idx)=>(
+                    <tr key={s.ic} className={`hover:bg-amber-50 transition-colors ${selectedIcs.includes(s.ic) ? 'bg-amber-50/80 font-semibold' : ''}`}>
+                      <td className="p-3 text-center"><input type="checkbox" checked={selectedIcs.includes(s.ic)} onChange={() => handleToggleSelectOne(s.ic)} className="w-4 h-4 cursor-pointer rounded border-slate-300" /></td>
+                      <td className="p-3 font-medium">{idx+1}</td>
+                      <td className="p-3 font-bold text-blue-950">{s.name}</td>
+                      <td className="p-3 font-mono text-[11px]">{s.ic}</td>
+                      <td className="p-3">{s.year}</td>
+                      <td className="p-3"><span className="bg-blue-100 text-blue-900 px-2.5 py-1 rounded-md font-extrabold shadow-sm">{getFullClassName(s.year, s.className)}</span></td>
+                      <td className="p-3 text-center"><button onClick={()=>handleDeleteStudent(s.ic)} className="text-red-600 hover:bg-red-100 p-1.5 rounded-lg transition-colors"><Icon name="trash" size={16}/></button></td>
+                    </tr>
+                  )) : <tr><td colSpan="7" className="p-8 text-center text-slate-400 italic">Tiada rekod murid untuk sesi/pentaksiran yang dipilih.</td></tr>}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      );
+    };
+
+    const AdminUploadPBD = ({ pbdRecords, setPbdRecords, academicYears, examTypes, notify }) => {
+      const [viewYear, setViewYear] = useState(academicYears[0] || '');
+      const [viewExam, setViewExam] = useState(examTypes[0]?.name || '');
+      const [bulkData, setBulkData] = useState('');
+
+      const handleBulkUpload = () => {
+        if(!bulkData.trim()) return;
+        const rows = bulkData.split('\n');
+        let updated = [...pbdRecords];
+        let count = 0;
+        rows.forEach(row => {
+          const rawCols = row.split(/[\t,;]+|\|/);
+          if (rawCols.length >= 4) {
+            const cols = rawCols.map(c => c.trim().toUpperCase().replace(/^"|"$/g, ''));
+            const ic = cols[0].replace(/[^0-9]/g, ''); const sub = cols[1]; const mark = parseInt(cols[2]); const tp = parseInt(cols[3]);
+            if (ic && sub && !isNaN(mark) && !isNaN(tp)) {
+              const rec = { studentIc: ic, academicYear: viewYear, examType: viewExam, subject: sub, mark, tp };
+              const idx = updated.findIndex(r => r.studentIc === ic && r.academicYear === viewYear && r.examType === viewExam && r.subject === sub);
+              idx >= 0 ? (updated[idx] = rec) : updated.push(rec);
+              count++;
+            }
+          }
+        });
+        setPbdRecords(updated); setBulkData(''); notify(`${count} rekod markah lama berjaya diserapkan!`, 'success');
+      };
+
+      return (
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 max-w-4xl mx-auto space-y-4">
+          <h2 className="text-xl font-bold text-blue-950 border-b pb-2">Muat Naik Markah PBD Lepas (Pukal)</h2>
+          <div className="grid grid-cols-2 gap-4 bg-slate-50 p-4 rounded-xl border border-slate-100">
+            <div><label className="block text-xs font-bold mb-1 text-slate-700">Tentukan Sesi</label><select value={viewYear} onChange={e=>setViewYear(e.target.value)} className="w-full p-2 border rounded-xl text-xs font-bold">{academicYears.map(y=><option key={y}>{y}</option>)}</select></div>
+            <div><label className="block text-xs font-bold mb-1 text-slate-700">Tentukan Pentaksiran</label><select value={viewExam} onChange={e=>setViewExam(e.target.value)} className="w-full p-2 border rounded-xl text-xs font-bold">{examTypes.map(ex=><option key={ex.name}>{ex.name}</option>)}</select></div>
+          </div>
+          <p className="text-xs text-slate-600 font-medium">Format (Sokong Tab, Koma, atau |): <strong className="text-blue-900">NO IC | NAMA SUBJEK | MARKAH | TP</strong><br/>Contoh: <code className="bg-white px-2 py-0.5 rounded text-[10px] font-bold">123456780000 | BAHASA MELAYU | 82 | 5</code></p>
+          <textarea value={bulkData} onChange={e=>setBulkData(e.target.value)} rows={8} className="w-full border border-slate-300 p-4 rounded-xl text-xs font-mono uppercase bg-slate-50" placeholder="Tampal data Excel markah lama di sini..."></textarea>
+          <button onClick={handleBulkUpload} className="bg-blue-900 hover:bg-[#1e40af] text-amber-400 font-extrabold px-6 py-3 rounded-xl text-xs w-full shadow transition-all">Pindah Data Masuk Ke Pangkalan Data</button>
+        </div>
+      );
+    };
+
+    const PengurusanGuru = ({ teachers, setTeachers, academicYears, examTypes, classes, subjectsByYear, notify }) => {
+      const [isAdding, setIsAdding] = useState(false);
+      const [isBulkAdding, setIsBulkAdding] = useState(false);
+      const [isCopyingAssignments, setIsCopyingAssignments] = useState(false);
+      const [bulkData, setBulkData] = useState('');
+      const [newEmail, setNewEmail] = useState('');
+      const [newName, setNewName] = useState('');
+
+      const [matrixYear, setMatrixYear] = useState(academicYears[0] || '');
+      const [matrixExam, setMatrixExam] = useState(examTypes[0]?.name || '');
+      const [matrixStdYear, setMatrixStdYear] = useState(tahunList[0]);
+
+      const [copySourceYear, setCopySourceYear] = useState(academicYears[0] || '');
+      const [copySourceExam, setCopySourceExam] = useState(examTypes[0]?.name || '');
+      const [copyDestYear, setCopyDestYear] = useState(academicYears[0] || '');
+      const [copyDestExam, setCopyDestExam] = useState(examTypes[0]?.name || '');
+
+      const handleAddTeacher = (e) => {
+        e.preventDefault();
+        if (teachers.some(t => t.email.toLowerCase() === newEmail.trim().toLowerCase())) { notify('Emel guru wujud!', 'error'); return; }
+        setTeachers([...teachers, { email: newEmail.trim().toLowerCase(), name: newName.trim().toUpperCase(), assignments: [] }].sort((a,b)=>a.name.localeCompare(b.name)));
+        setNewEmail(''); setNewName(''); setIsAdding(false); notify('Guru didaftarkan!', 'success');
+      };
+
+      const handleBulkAdd = () => {
+        if(!bulkData.trim()) return;
+        const rows = bulkData.split('\n');
+        let newTeachers = [];
+        let errors = 0; let dupes = 0;
+        rows.forEach(row => {
+          const rawCols = row.split(/[\t,;]+|\|/);
+          if (rawCols.length >= 2) {
+            const name = rawCols[0].trim().toUpperCase().replace(/^"|"$/g, '');
+            const email = rawCols[1].trim().toLowerCase().replace(/^"|"$/g, '');
+            if (name && email.includes('@')) {
+              if (teachers.some(t => t.email === email) || newTeachers.some(t => t.email === email)) { dupes++; } 
+              else { newTeachers.push({ email, name, assignments: [] }); }
+            } else { errors++; }
+          }
+        });
+        if (newTeachers.length > 0) {
+          setTeachers([...teachers, ...newTeachers].sort((a,b)=>a.name.localeCompare(b.name)));
+          setBulkData(''); setIsBulkAdding(false); notify(`${newTeachers.length} guru didaftarkan.`, 'success');
+        } else { notify(`Tiada data sah dijumpai. Semak format: NAMA | EMEL`, 'error'); }
+      };
+
+      const handleCopyAssignments = () => {
+        if (copySourceYear === copyDestYear && copySourceExam === copyDestExam) { notify('Sesi dan Pentaksiran sumber tidak boleh sama dengan destinasi!', 'error'); return; }
+        const destExists = teachers.some(t => (t.assignments || []).some(a => a.academicYear === copyDestYear && a.examType === copyDestExam));
+        if (destExists) {
+          if (!window.confirm(`AMARAN: Destinasi (${copyDestYear} - ${copyDestExam}) sudah mempunyai agihan guru.\n\nAdakah anda pasti mahu menambah salinan dari sesi sumber ke destinasi ini? Ini tidak akan memadam data destinasi sedia ada, tetapi mungkin menyebabkan pertindihan jika tidak disemak.`)) return;
+        }
+
+        let totalCopied = 0;
+        const updatedTeachers = teachers.map(t => {
+          const sourceAssignments = (t.assignments || []).filter(a => a.academicYear === copySourceYear && a.examType === copySourceExam);
+          if (sourceAssignments.length === 0) return t;
+          const newAssignments = [...(t.assignments || [])];
+          sourceAssignments.forEach(src => {
+            const isDuplicate = newAssignments.some(a => a.academicYear === copyDestYear && a.examType === copyDestExam && a.year === src.year && a.className === src.className && a.subject === src.subject && a.tag === src.tag);
+            if (!isDuplicate) { newAssignments.push({ ...src, academicYear: copyDestYear, examType: copyDestExam }); totalCopied++; }
+          });
+          return { ...t, assignments: newAssignments };
+        });
+
+        if (totalCopied === 0) { notify('Tiada agihan baharu disalin. Mungkin tiada agihan di sumber atau semua sudah wujud di destinasi.', 'error'); return; }
+        setTeachers(updatedTeachers);
+        setMatrixYear(copyDestYear); setMatrixExam(copyDestExam); setIsCopyingAssignments(false);
+        notify(`${totalCopied} agihan tugas berjaya disalin! Sila semak dan ubah suai jadual di bawah.`, 'success');
+      };
+
+      const handleSelectTeacherAssignment = (targetClassName, subjectName, assignedTeacherEmail, slotTag = 'MAIN') => {
+        const updatedTeachers = teachers.map(t => {
+          const filteredAssignments = (t.assignments || []).filter(a => {
+            const isMatch = a.academicYear === matrixYear && a.examType === matrixExam && a.year === matrixStdYear && a.className === targetClassName && a.subject === subjectName;
+            if (!isMatch) return true;
+            const currentTag = a.tag || 'MAIN';
+            return currentTag !== slotTag;
+          });
+
+          if (t.email === assignedTeacherEmail) {
+            filteredAssignments.push({ academicYear: matrixYear, examType: matrixExam, year: matrixStdYear, className: targetClassName, subject: subjectName, tag: slotTag });
+          }
+          return { ...t, assignments: filteredAssignments };
+        });
+        setTeachers(updatedTeachers); notify('Agihan guru diperbaharui & disegerakkan!', 'success');
+      };
+
+      const currentSubjects = subjectsByYear[matrixStdYear] || [];
+
+      return (
+        <div className="space-y-8">
+          <div className="flex flex-wrap justify-between items-center gap-4 border-b-2 border-amber-400 pb-2">
+            <h2 className="text-2xl font-bold text-blue-950">Pengurusan Guru & Agihan Subjek</h2>
+            <div className="flex flex-wrap gap-2">
+              <button onClick={() => { setIsAdding(!isAdding); setIsBulkAdding(false); setIsCopyingAssignments(false); }} className="bg-blue-900 hover:bg-blue-950 text-amber-400 font-extrabold px-5 py-2.5 rounded-xl text-xs shadow">{isAdding ? 'Batal' : '+ Daftar Guru Baru'}</button>
+              <button onClick={() => { setIsBulkAdding(!isBulkAdding); setIsAdding(false); setIsCopyingAssignments(false); }} className="bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold px-5 py-2.5 rounded-xl text-xs shadow">{isBulkAdding ? 'Batal Pukal' : '+ Daftar Pukal'}</button>
+              <button onClick={() => { setIsCopyingAssignments(!isCopyingAssignments); setIsAdding(false); setIsBulkAdding(false); }} className="bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold px-5 py-2.5 rounded-xl text-xs shadow flex gap-1 items-center"><Icon name="copy" size={14}/> {isCopyingAssignments ? 'Batal Salin' : 'Salin Agihan Dari Sesi Lepas'}</button>
+            </div>
+          </div>
+
+          {isAdding && (
+            <form onSubmit={handleAddTeacher} className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm grid grid-cols-1 sm:grid-cols-2 gap-4 animate-fadeIn">
+              <div><label className="text-xs font-bold mb-1 block text-slate-700">Nama Penuh Guru</label><input required type="text" value={newName} onChange={e=>setNewName(e.target.value)} className="w-full border border-slate-300 p-2.5 rounded-xl text-xs uppercase" /></div>
+              <div><label className="text-xs font-bold mb-1 block text-slate-700">Emel DELIMa Sah</label><input required type="email" value={newEmail} onChange={e=>setNewEmail(e.target.value)} className="w-full border border-slate-300 p-2.5 rounded-xl text-xs" /></div>
+              <div className="sm:col-span-2 flex justify-end"><button type="submit" className="bg-emerald-600 text-white px-8 py-2.5 rounded-xl text-xs font-bold">Simpan Guru</button></div>
+            </form>
+          )}
+
+          {isBulkAdding && (
+            <div className="bg-slate-50 p-6 rounded-2xl border border-slate-200 shadow-sm animate-fadeIn">
+              <p className="text-xs text-slate-600 mb-2 font-medium">Format: <strong className="text-blue-900">NAMA GURU | EMEL DELIMA</strong></p>
+              <textarea value={bulkData} onChange={e=>setBulkData(e.target.value)} rows={6} className="w-full border rounded-xl p-3 text-xs font-mono mb-3 uppercase" placeholder="Tampal jadual Excel di sini..."></textarea>
+              <div className="flex justify-end"><button onClick={handleBulkAdd} className="bg-emerald-600 text-white px-8 py-2.5 rounded-xl text-xs font-bold">Proses & Daftar Pukal</button></div>
+            </div>
+          )}
+
+          {isCopyingAssignments && (
+            <div className="bg-indigo-50 p-6 rounded-2xl border border-indigo-200 shadow-sm animate-fadeIn flex flex-col gap-4">
+              <h3 className="font-extrabold text-indigo-900 text-sm uppercase">Salin Agihan Guru Dari Sesi/Tahun Terdahulu</h3>
+              <p className="text-xs text-slate-600">Salin penetapan guru mengikut kelas dan subjek ke sesi baharu. Data asal tidak terjejas.</p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-3 bg-white p-4 rounded-xl border border-indigo-100">
+                  <div className="font-bold text-xs text-indigo-800 border-b border-indigo-100 pb-2">SUMBER (Data Asal)</div>
+                  <div><label className="block text-[10px] font-bold text-slate-500 mb-1">Sesi Persekolahan</label><select value={copySourceYear} onChange={e=>setCopySourceYear(e.target.value)} className="w-full border p-2 rounded-lg text-xs font-bold bg-slate-50 text-slate-800">{academicYears.map(y=><option key={y}>{y}</option>)}</select></div>
+                  <div><label className="block text-[10px] font-bold text-slate-500 mb-1">Jenis Pentaksiran</label><select value={copySourceExam} onChange={e=>setCopySourceExam(e.target.value)} className="w-full border p-2 rounded-lg text-xs font-bold bg-slate-50 text-slate-800">{examTypes.map(ex=><option key={ex.name}>{ex.name}</option>)}</select></div>
+                </div>
+                <div className="space-y-3 bg-white p-4 rounded-xl border border-indigo-100">
+                  <div className="font-bold text-xs text-indigo-800 border-b border-indigo-100 pb-2">DESTINASI (Sasaran Salinan)</div>
+                  <div><label className="block text-[10px] font-bold text-slate-500 mb-1">Sesi Persekolahan Baharu</label><select value={copyDestYear} onChange={e=>setCopyDestYear(e.target.value)} className="w-full border p-2 rounded-lg text-xs font-bold bg-slate-50 text-slate-800">{academicYears.map(y=><option key={y}>{y}</option>)}</select></div>
+                  <div><label className="block text-[10px] font-bold text-slate-500 mb-1">Jenis Pentaksiran Baharu</label><select value={copyDestExam} onChange={e=>setCopyDestExam(e.target.value)} className="w-full border p-2 rounded-lg text-xs font-bold bg-slate-50 text-slate-800">{examTypes.map(ex=><option key={ex.name}>{ex.name}</option>)}</select></div>
+                </div>
+              </div>
+              <div className="flex justify-end mt-2"><button onClick={handleCopyAssignments} className="bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-3 rounded-xl text-xs font-bold shadow-md transition-all flex items-center gap-2"><Icon name="check" size={16}/> Laksanakan Salinan Agihan</button></div>
+            </div>
+          )}
+
+          <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+            <h3 className="text-lg font-black text-blue-950 mb-1 uppercase">Jadual Matriks Agihan Guru</h3>
+            <p className="text-xs text-slate-500 mb-4">Pilih guru bagi setiap gabungan kelas dan subjek secara langsung melalui dropdown di bawah. Perubahan di sini disegerakkan ke pangkalan data awan secara automatik berdasarkan sesi yang dipilih.</p>
+            
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-slate-50 p-4 rounded-xl border border-slate-100 mb-6">
+              <div><label className="block text-xs font-bold text-slate-700 mb-1">1. Sesi Persekolahan</label><select value={matrixYear} onChange={e=>setMatrixYear(e.target.value)} className="w-full border p-2 rounded-lg text-xs font-bold bg-white text-blue-900">{academicYears.map(y=><option key={y}>{y}</option>)}</select></div>
+              <div><label className="block text-xs font-bold text-slate-700 mb-1">2. Jenis Pentaksiran</label><select value={matrixExam} onChange={e=>setMatrixExam(e.target.value)} className="w-full border p-2 rounded-lg text-xs font-bold bg-white text-blue-900">{examTypes.map(ex=><option key={ex.name}>{ex.name}</option>)}</select></div>
+              <div><label className="block text-xs font-bold text-slate-700 mb-1">3. Pilih Tahap / Tahun</label><select value={matrixStdYear} onChange={e=>setMatrixStdYear(e.target.value)} className="w-full border p-2 rounded-lg text-xs font-bold bg-white text-blue-900">{tahunList.map(y=><option key={y}>{y}</option>)}</select></div>
+            </div>
+
+            {currentSubjects.length > 0 ? (
+              <div className="overflow-x-auto border border-slate-200 rounded-xl">
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead className="bg-blue-900 text-amber-400 font-extrabold uppercase">
+                    <tr><th className="p-3 border-r border-blue-800 min-w-[140px]">KELAS</th>{currentSubjects.map(sub => (<th key={sub} className="p-3 border-r border-blue-800 text-center min-w-[200px]">{sub}</th>))}</tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-200">
+                    {classes.map(c => {
+                      const fullClassName = getFullClassName(matrixStdYear, c);
+                      return (
+                        <tr key={c} className="hover:bg-slate-50">
+                          <td className="p-3 font-extrabold text-blue-950 border-r border-slate-200 bg-slate-50/80 uppercase">{fullClassName}</td>
+                          {currentSubjects.map(sub => {
+                            const isPiMoral = sub.toUpperCase().includes('ISLAM') || sub.toUpperCase().includes('MORAL');
+                            if (isPiMoral) {
+                              const currentPiTeacher = teachers.find(t => (t.assignments || []).some(a => a.academicYear === matrixYear && a.examType === matrixExam && a.year === matrixStdYear && a.className === c && a.subject === sub && (a.tag === 'PI' || !a.tag)));
+                              const currentMoralTeacher = teachers.find(t => (t.assignments || []).some(a => a.academicYear === matrixYear && a.examType === matrixExam && a.year === matrixStdYear && a.className === c && a.subject === sub && a.tag === 'MORAL'));
+                              return (
+                                <td key={sub} className="p-2 border-r border-slate-200 min-w-[220px]">
+                                  <div className="space-y-2">
+                                    <div><span className="text-[9px] font-extrabold text-emerald-800 bg-emerald-100 px-1.5 py-0.5 rounded uppercase block w-max mb-1">🌙 Pend. Islam</span><select value={currentPiTeacher ? currentPiTeacher.email : ''} onChange={e => handleSelectTeacherAssignment(c, sub, e.target.value, 'PI')} className={`w-full border p-1.5 rounded-lg text-xs font-bold transition-all ${currentPiTeacher ? 'bg-emerald-50 border-emerald-300 text-emerald-950' : 'bg-white border-slate-300 text-slate-400'}`}><option value="">-- Guru Pend. Islam --</option>{teachers.map(t => (<option key={t.email} value={t.email}>{t.name} ({t.email})</option>))}</select></div>
+                                    <div><span className="text-[9px] font-extrabold text-indigo-800 bg-indigo-100 px-1.5 py-0.5 rounded uppercase block w-max mb-1">⭐ Pend. Moral</span><select value={currentMoralTeacher ? currentMoralTeacher.email : ''} onChange={e => handleSelectTeacherAssignment(c, sub, e.target.value, 'MORAL')} className={`w-full border p-1.5 rounded-lg text-xs font-bold transition-all ${currentMoralTeacher ? 'bg-indigo-50 border-indigo-300 text-indigo-950' : 'bg-white border-slate-300 text-slate-400'}`}><option value="">-- Guru Pend. Moral --</option>{teachers.map(t => (<option key={t.email} value={t.email}>{t.name} ({t.email})</option>))}</select></div>
+                                  </div>
+                                </td>
+                              );
+                            }
+                            const currentAssignedTeacher = teachers.find(t => (t.assignments || []).some(a => a.academicYear === matrixYear && a.examType === matrixExam && a.year === matrixStdYear && a.className === c && a.subject === sub && (a.tag === 'MAIN' || !a.tag)));
+                            return (
+                              <td key={sub} className="p-2 border-r border-slate-200 min-w-[200px]">
+                                <select value={currentAssignedTeacher ? currentAssignedTeacher.email : ''} onChange={e => handleSelectTeacherAssignment(c, sub, e.target.value, 'MAIN')} className={`w-full border p-2 rounded-lg text-xs font-bold transition-all ${currentAssignedTeacher ? 'bg-blue-50 border-blue-300 text-blue-900' : 'bg-white border-slate-300 text-slate-400'}`}>
+                                  <option value="">-- Belum Diagih --</option>{teachers.map(t => (<option key={t.email} value={t.email}>{t.name} ({t.email})</option>))}
+                                </select>
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            ) : (<div className="p-6 bg-amber-50 border border-amber-200 text-amber-800 rounded-xl text-xs font-medium text-center">Tiada subjek didaftarkan bagi {matrixStdYear}. Sila tambah subjek di tab Tetapan Subjek dahulu.</div>)}
+          </div>
+
+          <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+            <h3 className="font-extrabold text-blue-950 text-base mb-4 uppercase">Senarai Guru Terdaftar ({teachers.length})</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              {teachers.map(t => (
+                <div key={t.email} className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl flex justify-between items-center">
+                  <div>
+                    <div className="font-bold text-xs text-blue-900 uppercase">{t.name}</div>
+                    <div className="text-[10px] text-slate-500 font-mono">{t.email}</div>
+                    <div className="text-[10px] font-bold text-amber-600 mt-1">{t.assignments?.length || 0} Agihan Kelas Sepanjang Sesi</div>
+                  </div>
+                  <button onClick={() => { setTeachers(teachers.filter(x=>x.email!==t.email)); notify('Guru dipadam', 'success'); }} className="text-red-500 p-1.5 hover:bg-red-100 rounded-lg"><Icon name="trash" size={14}/></button>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      );
+    };
+
+    const InputMarkahGuru = ({ currentUser, students, pbdRecords, setPbdRecords, gradingScales, examStatuses = {}, notify }) => {
+      const assignments = currentUser.assignments || [];
+      const [selectedIdx, setSelectedIdx] = useState(0);
+      const activeAssignment = assignments[selectedIdx] || null;
+
+      const isLocked = useMemo(() => {
+        if (!activeAssignment) return false;
+        const key = `${activeAssignment.academicYear}_${activeAssignment.examType}`;
+        return (examStatuses[key] || 'ON') === 'OFF';
+      }, [activeAssignment, examStatuses]);
+
+      const assignedStudents = useMemo(() => {
+        if (!activeAssignment) return [];
+        return students.filter(s => s.academicYear === activeAssignment.academicYear && s.examType === activeAssignment.examType && s.year === activeAssignment.year && s.className === activeAssignment.className).sort((a,b)=>a.name.localeCompare(b.name));
+      }, [students, activeAssignment]);
+
+      const [markInputs, setMarkInputs] = useState({});
+
+      useEffect(() => {
+        if (!activeAssignment) return;
+        const initial = {};
+        assignedStudents.forEach(s => {
+          const rec = pbdRecords.find(r => r.studentIc === s.ic && r.academicYear === activeAssignment.academicYear && r.examType === activeAssignment.examType && r.subject === activeAssignment.subject);
+          initial[s.ic] = rec ? { mark: rec.mark !== undefined && rec.mark !== null ? rec.mark : '', tp: rec.tp || 1 } : { mark: '', tp: 1 };
+        });
+        setMarkInputs(initial);
+      }, [activeAssignment, assignedStudents, pbdRecords]);
+
+      const handleSave = () => {
+        if (!activeAssignment) return;
+        const key = `${activeAssignment.academicYear}_${activeAssignment.examType}`;
+        if ((examStatuses[key] || 'ON') === 'OFF') { notify('Gagal: Kemasukan markah bagi pentaksiran ini telah DITUTUP oleh Admin!', 'error'); return; }
+
+        let updated = [...pbdRecords];
+        assignedStudents.forEach(s => {
+          const input = markInputs[s.ic]; 
+          if (!input) return;
+          const idx = updated.findIndex(r => r.studentIc === s.ic && r.academicYear === activeAssignment.academicYear && r.examType === activeAssignment.examType && r.subject === activeAssignment.subject);
+          const hasMark = input.mark !== '' && input.mark !== undefined && input.mark !== null;
+          const hasTp = input.tp !== '' && input.tp !== undefined && input.tp !== null;
+
+          if (hasMark || hasTp) {
+            const newRec = { studentIc: s.ic, academicYear: activeAssignment.academicYear, examType: activeAssignment.examType, subject: activeAssignment.subject, mark: hasMark ? parseInt(input.mark) : '', tp: parseInt(input.tp) };
+            idx >= 0 ? (updated[idx] = newRec) : updated.push(newRec);
+          } else if (idx >= 0) { updated.splice(idx, 1); }
+        });
+        setPbdRecords(updated); notify('Markah & TP dikemas kini. Penyegerakan ke awan sedang diproses.', 'info');
+      };
+
+      if (assignments.length === 0) return <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-200 text-center text-sm font-medium text-slate-500">Anda belum diagihkan sebarang kelas / subjek oleh Pentadbir Sistem.</div>;
+
+      return (
+        <div className="space-y-6">
+          <div className="bg-white p-6 rounded-2xl shadow-sm border flex flex-col md:flex-row justify-between gap-4 border-l-4 border-l-blue-900">
+            <h2 className="text-2xl font-bold text-blue-950">Isi Markah PBD</h2>
+            <select value={selectedIdx} onChange={e=>setSelectedIdx(parseInt(e.target.value))} className="border-2 border-slate-200 p-2.5 rounded-xl text-xs font-bold bg-slate-50 uppercase focus:border-blue-600 focus:bg-white transition-colors min-w-[300px]">
+              {assignments.map((a, i) => <option key={i} value={i}>{getFullClassName(a.year, a.className)} - {a.subject} ({a.examType})</option>)}
+            </select>
+          </div>
+
+          {activeAssignment && (
+            <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+              {isLocked && (
+                <div className="bg-red-500 text-white p-4 rounded-xl mb-6 font-extrabold text-xs flex items-center justify-between shadow-md animate-fadeIn">
+                  <div className="flex items-center gap-2"><Icon name="alert" size={20}/><span>PERHATIAN: Kemasukan dan pengemaskinian markah bagi pentaksiran ini telah DITUTUP oleh Pentadbir Sistem.</span></div>
+                  <span className="bg-white text-red-600 px-3 py-1 rounded-lg text-[10px] uppercase font-black">LOCKED</span>
+                </div>
+              )}
+
+              <div className="flex flex-col sm:flex-row justify-between items-center bg-gradient-to-r from-blue-900 to-[#1e40af] p-5 rounded-xl mb-6 text-xs font-semibold text-white uppercase shadow-md gap-4">
+                <div className="space-y-1">
+                  <div><span className="text-blue-300">SESI:</span> {activeAssignment.academicYear} <span className="mx-2 text-blue-500">|</span> <span className="text-blue-300">PENTAKSIRAN:</span> <span className="text-amber-400 font-bold">{activeAssignment.examType}</span></div>
+                  <div className="text-sm"><span className="text-blue-300">KELAS:</span> {getFullClassName(activeAssignment.year, activeAssignment.className)} <span className="mx-2 text-blue-500">|</span> <span className="text-blue-300">SUBJEK:</span> {activeAssignment.subject}</div>
+                </div>
+                <button onClick={handleSave} disabled={isLocked} className={`px-6 py-3 rounded-xl flex gap-2 items-center font-black tracking-widest shadow transition-colors w-full sm:w-auto justify-center ${isLocked ? 'bg-slate-400 text-slate-200 cursor-not-allowed opacity-70' : 'bg-amber-400 hover:bg-amber-500 text-blue-950'}`}>
+                  <Icon name="save" size={18}/> {isLocked ? 'KEMASUKAN DITUTUP' : 'SIMPAN MARKAH & TP'}
+                </button>
+              </div>
+
+              <div className="overflow-x-auto border border-slate-200 rounded-xl">
+                <table className="w-full text-left text-xs text-slate-700">
+                  <thead className="bg-slate-100 border-b font-extrabold uppercase text-slate-600">
+                    <tr><th className="p-4 w-12 text-center">#</th><th className="p-4">Nama Murid</th><th className="p-4 w-36">No IC</th><th className="p-4 w-32 text-center">Markah (%)</th><th className="p-4 w-24 text-center">Gred</th><th className="p-4 w-32 text-center">TP (1-6)</th></tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {assignedStudents.length > 0 ? assignedStudents.map((s, idx) => {
+                      const input = markInputs[s.ic] || { mark: '', tp: 1 };
+                      const gInfo = calculateDynamicGrade(input.mark, activeAssignment.examType, gradingScales);
+                      return (
+                        <tr key={s.ic} className="hover:bg-blue-50/50 transition-colors">
+                          <td className="p-3 text-center font-medium">{idx+1}</td><td className="p-3 font-bold text-sm text-blue-950">{s.name}</td><td className="p-3 font-mono text-[11px]">{s.ic}</td>
+                          <td className="p-3">
+                            <input 
+                              type="number" disabled={isLocked} value={input.mark} 
+                              onChange={e => {
+                                const val = e.target.value; const num = val === '' ? '' : parseInt(val);
+                                setMarkInputs(p => {
+                                  const currentTp = p[s.ic]?.tp || 1; let newTp = currentTp;
+                                  if (num !== '') { const calc = calculateDynamicGrade(num, activeAssignment.examType, gradingScales); newTp = calc.tp; }
+                                  return { ...p, [s.ic]: { mark: num, tp: newTp } };
+                                });
+                              }} 
+                              className="w-full border-2 border-slate-200 p-2.5 rounded-lg text-center font-black text-blue-900 focus:border-blue-600 focus:bg-white bg-slate-50 transition-colors text-sm disabled:bg-slate-200 disabled:text-slate-500 disabled:cursor-not-allowed" 
+                              placeholder="-"
+                            />
+                          </td>
+                          <td className="p-3 text-center font-black text-lg text-slate-700">{input.mark !== '' ? gInfo.grade : '-'}</td>
+                          <td className="p-3">
+                            <select 
+                              disabled={isLocked} value={input.tp} 
+                              onChange={e => { const selectedTp = parseInt(e.target.value); setMarkInputs(p => ({ ...p, [s.ic]: { ...p[s.ic], tp: selectedTp } })); }} 
+                              className="w-full border-2 border-slate-200 p-2.5 rounded-lg text-center font-bold text-blue-900 bg-slate-50 focus:border-blue-600 focus:bg-white text-sm disabled:bg-slate-200 disabled:text-slate-500 disabled:cursor-not-allowed"
+                            >
+                              {(["1","2","3","4","5","6"]).map(t => <option key={t} value={t}>TP {t}</option>)}
+                            </select>
+                          </td>
+                        </tr>
+                      );
+                    }) : <tr><td colSpan="6" className="p-8 text-center text-slate-400 italic">Tiada murid direkodkan untuk kelas ini. Sila hubungi admin.</td></tr>}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    };
+
+    const PaparanKeseluruhanGuru = ({ students, pbdRecords, academicYears, examTypes, classes, subjectsByYear, subjectAbbreviations, gradingScales, notify, schoolLogo }) => {
+      const [viewYear, setViewYear] = useState(academicYears[0]||'');
+      const [viewExam, setViewExam] = useState(examTypes[0]?.name||'');
+      const [viewStdYear, setViewStdYear] = useState(tahunList[0]);
+      const [viewClassBase, setViewClassBase] = useState(classes[0]||'');
+
+      const classStudents = useMemo(() => students.filter(s => s.academicYear === viewYear && s.examType === viewExam && s.year === viewStdYear && s.className === viewClassBase).sort((a,b)=>a.name.localeCompare(b.name)), [students, viewYear, viewExam, viewStdYear, viewClassBase]);
+      const subjects = useMemo(() => subjectsByYear[viewStdYear] || [], [subjectsByYear, viewStdYear]);
+
+      const handleGuruExcel = async () => {
+        if(classStudents.length === 0) { notify('Tiada data murid untuk dicetak.', 'error'); return; }
+        try {
+          const workbook = new ExcelJS.Workbook();
+          const sheetName = getFullClassName(viewStdYear, viewClassBase).substring(0,31).replace(/[\\/?*\[\]]/g, '');
+          const sheet = workbook.addWorksheet(sheetName, { pageSetup: { paperSize: 9, orientation: 'landscape', fitToPage: true, fitToWidth: 1, printTitlesRow: '9:10' } });
+          
+          for(let r=1; r<=200; r++) sheet.getRow(r).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFFFF' }};
+          if (schoolLogo) { const logoId = workbook.addImage({ base64: schoolLogo, extension: 'png' }); sheet.addImage(logoId, { tl: { col: 0, row: 0 }, ext: { width: 100, height: 100 } }); }
+
+          sheet.mergeCells('C1:J1'); sheet.getCell('C1').value = 'SEKOLAH KEBANGSAAN TUNKU AZIZAH'; sheet.getCell('C1').font = { name: 'Arial', size: 16, bold: true }; sheet.getCell('C1').alignment = { vertical: 'middle', horizontal: 'left' };
+          sheet.mergeCells('C2:J2'); sheet.getCell('C2').value = 'REKOD PEREKODAN MARKAH DAN TAHAP PENGUASAAN'; sheet.getCell('C2').font = { name: 'Arial', size: 12, bold: true }; sheet.getCell('C2').alignment = { vertical: 'middle', horizontal: 'left' };
+
+          sheet.getCell('C4').value = 'PENTAKSIRAN:'; sheet.getCell('D4').value = viewExam.toUpperCase(); sheet.getCell('D4').font = { bold: true };
+          sheet.getCell('C5').value = 'TAHUN:'; sheet.getCell('D5').value = viewStdYear.toUpperCase(); sheet.getCell('D5').font = { bold: true };
+          sheet.getCell('C6').value = 'KELAS:'; sheet.getCell('D6').value = getFullClassName(viewStdYear, viewClassBase); sheet.getCell('D6').font = { size: 14, bold: true, color: { argb: 'FF0000FF' } };
+
+          sheet.getRow(8).height = 10;
+          sheet.getRow(9).height = 30; sheet.getRow(10).height = 20;
+
+          sheet.getCell('A9').value = 'BIL'; sheet.mergeCells('A9:A10');
+          sheet.getCell('B9').value = 'NAMA MURID'; sheet.mergeCells('B9:B10');
+          sheet.getCell('C9').value = 'NO. KAD PENGENALAN'; sheet.mergeCells('C9:C10');
+
+          ['A','B','C'].forEach(col => {
+            const c = sheet.getCell(`${col}9`); c.font = { bold: true, size: 10 }; c.alignment = { vertical: 'middle', horizontal: 'center' };
+            c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD9E1F2' }}; c.border = { top: {style:'thin'}, left: {style:'thin'}, bottom: {style:'thin'}, right: {style:'thin'} };
+          });
+          sheet.getColumn('A').width = 5; sheet.getColumn('B').width = 45; sheet.getColumn('C').width = 18;
+
+          let colIndex = 4; 
+          subjects.forEach((sub) => {
+            const startCol = sheet.getColumn(colIndex).letter; const endCol = sheet.getColumn(colIndex + 2).letter;
+            sheet.mergeCells(`startCol9:{endCol}9`);
+            const subCell = sheet.getCell(`${startCol}9`);
+            subCell.value = (subjectAbbreviations[sub] || sub).toUpperCase(); subCell.font = { bold: true, size: 9 }; subCell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+            subCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2EFDA' }}; subCell.border = { top: {style:'thin'}, left: {style:'thin'}, bottom: {style:'thin'}, right: {style:'thin'} };
+
+            ['M', 'G', 'TP'].forEach((lbl, idx) => {
+              const subH = sheet.getCell(`${sheet.getColumn(colIndex + idx).letter}10`);
+              subH.value = lbl; subH.font = { bold: true, size: 9 }; subH.alignment = { vertical: 'middle', horizontal: 'center' };
+              subH.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF2F2F2' }}; subH.border = { top: {style:'thin'}, left: {style:'thin'}, bottom: {style:'thin'}, right: {style:'thin'} };
+              sheet.getColumn(colIndex + idx).width = 5; 
+            });
+            colIndex += 3;
+          });
+
+          let rowNum = 11;
+          classStudents.forEach((std, stdIdx) => {
+            const row = sheet.getRow(rowNum);
+            row.getCell(1).value = stdIdx + 1; row.getCell(2).value = std.name; row.getCell(3).value = std.ic;
+            for(let i=1; i<=3; i++) {
+              const c = row.getCell(i); c.border = { top: {style:'thin'}, left: {style:'thin'}, bottom: {style:'thin'}, right: {style:'thin'} }; c.alignment = { vertical: 'middle', horizontal: i===2 ? 'left' : 'center' }; c.font = { size: 10 };
+            }
+
+            let currentDataCol = 4;
+            subjects.forEach(sub => {
+              const rec = pbdRecords.find(r => r.studentIc === std.ic && r.academicYear === viewYear && r.examType === viewExam && r.subject === sub);
+              const mC = row.getCell(currentDataCol); const gC = row.getCell(currentDataCol + 1); const tpC = row.getCell(currentDataCol + 2);
+
+              if (rec && rec.mark !== undefined && rec.mark !== '') {
+                mC.value = rec.mark; gC.value = calculateDynamicGrade(rec.mark, viewExam, gradingScales).grade; tpC.value = `TP${rec.tp}`; 
+              } else { mC.value = ''; gC.value = ''; tpC.value = ''; }
+
+              [mC, gC, tpC].forEach(c => { c.border = { top: {style:'thin'}, left: {style:'thin'}, bottom: {style:'thin'}, right: {style:'thin'} }; c.alignment = { vertical: 'middle', horizontal: 'center' }; c.font = { size: 10 }; });
+              currentDataCol += 3;
+            });
+            rowNum++;
+          });
+          sheet.views = [{ state: 'frozen', xSplit: 3, ySplit: 10 }];
+          sheet.headerFooter.oddFooter = '&C Muka Surat &P daripada &N';
+          
+          const buffer = await workbook.xlsx.writeBuffer(); saveAs(new Blob([buffer]), `Rumusan_${sheetName}_${viewExam}.xlsx`); notify('Eksport Excel Berjaya', 'success');
+        } catch(e) { console.error(e); notify('Ralat sistem', 'error'); }
+      };
+
+      return (
+        <div className="space-y-6">
+          <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 border-l-4 border-l-emerald-600">
+            <h2 className="text-xl font-bold text-blue-950 mb-4">Paparan Rekod Penuh (Read-Only)</h2>
+            <div className="grid grid-cols-1 sm:grid-cols-5 gap-3 bg-slate-50 p-4 rounded-xl border border-slate-100 mb-6">
+              <select value={viewYear} onChange={e=>setViewYear(e.target.value)} className="p-2 border border-slate-300 rounded-xl text-xs font-bold text-slate-700 bg-white">{academicYears.map(y=><option key={y}>{y}</option>)}</select>
+              <select value={viewExam} onChange={e=>setViewExam(e.target.value)} className="p-2 border border-slate-300 rounded-xl text-xs font-bold text-slate-700 bg-white">{examTypes.map(ex=><option key={ex.name}>{ex.name}</option>)}</select>
+              <select value={viewStdYear} onChange={e=>setViewStdYear(e.target.value)} className="p-2 border border-slate-300 rounded-xl text-xs font-bold text-slate-700 bg-white">{tahunList.map(y=><option key={y}>{y}</option>)}</select>
+              <select value={viewClassBase} onChange={e=>setViewClassBase(e.target.value)} className="p-2 border border-slate-300 rounded-xl text-xs font-bold text-slate-700 bg-white">{classes.map(c=><option key={c}>{c}</option>)}</select>
+              <button onClick={handleGuruExcel} className="bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold rounded-xl text-xs py-2 shadow transition-colors flex justify-center items-center gap-1.5"><Icon name="download" size={14}/> Muat Turun Data Excel</button>
+            </div>
+
+            <div className="overflow-x-auto border border-slate-200 rounded-xl">
+              <table className="w-full text-[10px] text-slate-700 table-fixed border-collapse">
+                <thead className="bg-slate-100 font-extrabold uppercase text-slate-600">
+                  <tr><th className="p-3 border w-8 text-center" rowSpan="2">#</th><th className="p-3 border w-48 text-left" rowSpan="2">Nama Murid</th>
+                    {subjects.map(sub => <th key={sub} colSpan="3" className="p-2 border text-center text-blue-900 truncate" title={sub}>{subjectAbbreviations[sub]||sub}</th>)}
+                  </tr>
+                  <tr>{subjects.map(sub => <Fragment key={sub+"_lbl"}><th className="border text-center w-8 bg-slate-50">M</th><th className="border text-center w-8 bg-slate-50">G</th><th className="border text-center w-10 bg-slate-50 text-blue-800">TP</th></Fragment>)}</tr>
+                </thead>
+                <tbody className="divide-y divide-slate-200 font-medium">
+                  {classStudents.map((std, i) => (
+                    <tr key={std.ic} className="hover:bg-amber-50/70 transition-colors">
+                      <td className="p-2 border text-center font-bold">{i+1}</td><td className="p-2 border font-bold text-blue-950 truncate text-xs">{std.name}</td>
+                      {subjects.map(sub => {
+                        const rec = pbdRecords.find(x => x.studentIc===std.ic && x.academicYear===viewYear && x.examType===viewExam && x.subject===sub);
+                        const g = rec && rec.mark !== '' ? calculateDynamicGrade(rec.mark, viewExam, gradingScales).grade : '-';
+                        return (
+                          <Fragment key={sub}>
+                            <td className="border text-center">{rec?.mark??'-'}</td><td className="border text-center font-black text-slate-900">{g}</td><td className="border text-center font-bold text-blue-800">{rec?.mark?`TP${rec.tp}`:'-'}</td>
+                          </Fragment>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                  {classStudents.length===0 && <tr><td colSpan={2+subjects.length*3} className="text-center p-8 italic text-slate-400">Tiada data pendaftaran murid untuk kelas ini pada sesi yang dipilih.</td></tr>}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      );
+    };
+
+    const PrintableSlip = ({ student, academicYear, examType, pbdRecords, subjectsByYear, gradingScales, schoolLogo }) => {
+      const studentRecords = pbdRecords.filter(r => r.studentIc === student.ic && r.academicYear === academicYear && r.examType === examType);
+      const availableSubjects = subjectsByYear[student.year] || [];
+      const DISPLAY_LOGO = schoolLogo || "data:image/gif;base64,R0lGODlhAQABAIAAAP///wAAACH5BAEAAAAALAAAAAABAAEAAAICRAEAOw==";
+
+      const shortYearMap = {
+        'TAHUN SATU': '1', 'TAHUN DUA': '2', 'TAHUN TIGA': '3',
+        'TAHUN EMPAT': '4', 'TAHUN LIMA': '5', 'TAHUN ENAM': '6',
+        'KELAS KHAS RENDAH': 'PK'
+      };
+      
+      const formattedYearClass = `${shortYearMap[student.year] || student.year} ${student.className}`;
+
+      return (
+        <div className="bg-white p-8 md:p-12 rounded shadow-sm border print-container font-serif text-slate-900 leading-normal print:shadow-none print:border-none print:p-0">
+          <div className="flex items-center border-b-4 border-double border-slate-900 pb-4 mb-6">
+            <img src={DISPLAY_LOGO} alt="Logo" className="w-28 h-28 object-contain mr-6" />
+            <div className="flex-1 text-center pr-12">
+              <h1 className="text-xl font-black uppercase tracking-wider text-blue-950 font-sans">SEKOLAH KEBANGSAAN TUNKU AZIZAH</h1>
+              <p className="text-xs font-sans text-slate-600 font-bold uppercase">BANDAR INDERA MAHKOTA, 25200 KUANTAN, PAHANG DARUL MAKMUR</p>
+              <p className="text-[11px] font-sans text-slate-500 uppercase">KOD SEKOLAH: CBA4105 | TEL: 09-5721343 | EMEL: CBA4105@MOE.EDU.MY</p>
+              <h2 className="text-sm font-black uppercase tracking-widest text-blue-900 font-sans mt-2 underline">SLIP PELAPORAN PENTAKSIRAN</h2>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-xs font-sans mb-6 bg-slate-50 p-4 rounded border border-slate-200">
+            <div className="uppercase"><strong>NAMA MURID:</strong> {student.name}</div>
+            <div className="uppercase"><strong>NO. KAD PENGENALAN:</strong> {student.ic}</div>
+            <div className="uppercase"><strong>TAHUN / KELAS:</strong> {formattedYearClass}</div>
+            <div className="uppercase"><strong>SESI AKADEMIK:</strong> {academicYear}</div>
+            <div className="col-span-2 uppercase"><strong>JENIS PENTAKSIRAN:</strong> {examType}</div>
+          </div>
+          <table className="w-full text-xs font-sans border-collapse border border-slate-300 mb-8 uppercase">
+            <thead>
+              <tr className="bg-slate-100 text-slate-800 font-bold"><th className="border p-2 w-10">BIL</th><th className="border p-2 text-left">MATA PELAJARAN</th><th className="border p-2 w-24">MARKAH</th><th className="border p-2 w-20">GRED</th><th className="border p-2 w-28">TAHAP (TP)</th></tr>
+            </thead>
+            <tbody>
+              {availableSubjects.map((sub, idx) => {
+                const rec = studentRecords.find(r => r.subject === sub);
+                const hasMark = rec && rec.mark !== '' && rec.mark !== undefined && rec.mark !== null;
+                const markDisplay = hasMark ? rec.mark : '-';
+                const gInfo = hasMark ? calculateDynamicGrade(rec.mark, examType, gradingScales) : { grade: '-' };
+                const hasTp = rec && rec.tp !== '' && rec.tp !== undefined && rec.tp !== null;
+                const tpDisplay = hasTp ? `TP ${rec.tp}` : '-';
+
+                return (
+                  <tr key={sub} className="even:bg-slate-50/50">
+                    <td className="border p-2 text-center font-bold text-slate-500">{idx + 1}</td>
+                    <td className="border p-2 font-bold">{sub}</td>
+                    <td className="border p-2 text-center font-mono font-bold">{markDisplay}</td>
+                    <td className="border p-2 text-center font-black">{gInfo.grade}</td>
+                    <td className="border p-2 text-center font-extrabold text-blue-900">{tpDisplay}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          <div className="grid grid-cols-3 gap-6 text-[11px] font-sans pt-12 uppercase">
+            <div className="text-center space-y-10"><p>TANDATANGAN GURU BESAR</p><div className="border-b border-slate-400 w-4/5 mx-auto"></div></div>
+            <div className="text-center space-y-10"><p>TANDATANGAN GURU KELAS</p><div className="border-b border-slate-400 w-4/5 mx-auto"></div></div>
+            <div className="text-center space-y-10"><p>TANDATANGAN IBU BAPA / PENJAGA</p><div className="border-b border-slate-400 w-4/5 mx-auto"></div></div>
+          </div>
+        </div>
+      );
+    };
+
+    const ParentPortal = (props) => {
+      const availableYears = useMemo(() => {
+        if (!props.student || !props.pbdRecords) return [];
+        const studentRecords = props.pbdRecords.filter(r => 
+          r.studentIc === props.student.ic && 
+          ((r.mark !== '' && r.mark !== undefined && r.mark !== null) || (r.tp !== '' && r.tp !== undefined && r.tp !== null))
+        );
+        const yearsWithData = new Set(studentRecords.map(r => r.academicYear));
+        return props.academicYears.filter(y => yearsWithData.has(y));
+      }, [props.student, props.pbdRecords, props.academicYears]);
+
+      const [selectedYear, setSelectedYear] = useState('');
+
+      useEffect(() => {
+        if (availableYears.length > 0) {
+          if (!selectedYear || !availableYears.includes(selectedYear)) {
+            setSelectedYear(availableYears[0]);
+          }
+        } else {
+          setSelectedYear('');
+        }
+      }, [availableYears]);
+
+      const availableExams = useMemo(() => {
+        if (!props.student || !props.pbdRecords || !selectedYear) return [];
+        const studentYearRecords = props.pbdRecords.filter(r => 
+          r.studentIc === props.student.ic && 
+          r.academicYear === selectedYear && 
+          ((r.mark !== '' && r.mark !== undefined && r.mark !== null) || (r.tp !== '' && r.tp !== undefined && r.tp !== null))
+        );
+        const examsWithData = new Set(studentYearRecords.map(r => r.examType));
+        return props.examTypes.filter(ex => examsWithData.has(ex.name));
+      }, [props.student, props.pbdRecords, selectedYear, props.examTypes]);
+
+      const [selectedExam, setSelectedExam] = useState('');
+
+      useEffect(() => {
+        if (availableExams.length > 0) {
+          if (!selectedExam || !availableExams.some(e => e.name === selectedExam)) {
+            setSelectedExam(availableExams[0].name);
+          }
+        } else {
+          setSelectedExam('');
+        }
+      }, [availableExams]);
+
+      const [isGenerating, setIsGenerating] = useState(false);
+
+      const isSlipPublished = useMemo(() => {
+        if (!selectedYear || !selectedExam || !props.slipStatuses) return false;
+        const key = `${selectedYear}_${selectedExam}`;
+        return props.slipStatuses[key] === 'ON';
+      }, [selectedYear, selectedExam, props.slipStatuses]);
+
+      const handleDownloadPDF = () => {
+        const element = document.getElementById('slip-pentaksiran');
+        if (!element || !isSlipPublished) return;
+
+        setIsGenerating(true);
+        if (props.notify) props.notify('Sedang menjana fail PDF...', 'info');
+
+        const opt = {
+          margin:       8,
+          filename:     `SLIP_PENTAKSIRAN_${(props.student?.name || 'MURID').replace(/[^a-zA-Z0-9]/g, '_')}_${selectedExam.replace(/[^a-zA-Z0-9]/g, '_')}.pdf`,
+          image:        { type: 'jpeg', quality: 0.98 },
+          html2canvas:  { scale: 2, useCORS: true, logging: false },
+          jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
+        };
+
+        if (window.html2pdf) {
+          window.html2pdf().set(opt).from(element).save().then(() => {
+            setIsGenerating(false);
+            if (props.notify) props.notify('Muat turun PDF berjaya!', 'success');
+          }).catch((err) => {
+            console.error(err);
+            setIsGenerating(false);
+            if (props.notify) props.notify('Ralat semasa menjana PDF. Sila cuba lagi.', 'error');
+          });
+        } else {
+          window.print();
+          setIsGenerating(false);
+        }
+      };
+
+      if (availableYears.length === 0) {
+        return (
+          <div className="max-w-3xl mx-auto my-12 bg-white p-8 rounded-3xl shadow-sm border border-slate-200 text-center space-y-4">
+            <div className="w-16 h-16 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center mx-auto"><Icon name="alert" size={32}/></div>
+            <h3 className="text-lg font-black text-blue-950 uppercase">Tiada Rekod Pentaksiran</h3>
+            <p className="text-xs text-slate-500 max-w-md mx-auto">Tiada rekod pentaksiran tersedia untuk murid bernama <strong className="text-slate-800">{props.student?.name}</strong> (IC: {props.student?.ic}) pada masa ini.</p>
+          </div>
+        );
+      }
+
+      return (
+        <div className="space-y-6 max-w-4xl mx-auto print:space-y-0 print:max-w-none">
+          <div className="bg-white p-6 rounded-2xl shadow-sm border flex flex-col sm:flex-row justify-between items-center gap-4 no-print border-l-4 border-l-purple-600 mb-6">
+            <h2 className="text-2xl font-bold text-blue-950">Pelaporan Murid</h2>
+            <div className="flex flex-wrap gap-2">
+              <select value={selectedYear} onChange={e=>setSelectedYear(e.target.value)} className="border p-2 rounded-xl text-xs font-bold bg-slate-50 text-blue-900">{availableYears.map(y=><option key={y} value={y}>{y}</option>)}</select>
+              <select value={selectedExam} onChange={e=>setSelectedExam(e.target.value)} className="border p-2 rounded-xl text-xs font-bold bg-slate-50 text-blue-900">{availableExams.map(ex=><option key={ex.name} value={ex.name}>{ex.name}</option>)}</select>
+              <button onClick={handleDownloadPDF} disabled={isGenerating || !selectedExam || !isSlipPublished} className={`px-5 py-2.5 rounded-xl text-xs flex gap-2 items-center shadow transition-colors font-extrabold ${!isSlipPublished ? 'bg-slate-300 text-slate-500 cursor-not-allowed' : 'bg-blue-900 hover:bg-[#1e40af] text-amber-400'}`}>
+                <Icon name="download"/> {isGenerating ? 'MENJANA PDF...' : 'MUAT TURUN'}
+              </button>
+            </div>
+          </div>
+          
+          {selectedYear && selectedExam ? (
+            isSlipPublished ? (
+              <div id="slip-pentaksiran">
+                <PrintableSlip {...props} student={props.student} academicYear={selectedYear} examType={selectedExam} schoolLogo={props.schoolLogo} />
+              </div>
+            ) : (
+              <div className="bg-white p-12 rounded-2xl text-center border border-slate-200 shadow-sm flex flex-col items-center justify-center space-y-4">
+                <div className="w-16 h-16 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center mb-2"><Icon name="alert" size={32}/></div>
+                <h3 className="text-lg font-black text-slate-700 uppercase">Akses Disekat</h3>
+                <p className="text-sm font-bold text-slate-500 max-w-md leading-relaxed">
+                  Slip keputusan peperiksaan ini belum dibuka untuk semakan ibu bapa. Sila tunggu pengumuman rasmi daripada pihak sekolah.
+                </p>
+              </div>
+            )
+          ) : (
+            <div className="bg-white p-6 rounded-2xl text-center text-xs text-slate-500">Sila pilih Sesi dan Pentaksiran untuk memaparkan slip.</div>
+          )}
+        </div>
+      );
+    };
+
+    const App = () => {
+      const [isLoading, setIsLoading] = useState(true);
+      const [isHydrated, setIsHydrated] = useState(false);
+      const [loadError, setLoadError] = useState(false); // State perlindungan baru
+      const [currentRole, setCurrentRole] = useState(null);
+      const [currentUser, setCurrentUser] = useState(null);
+      const [activeTab, setActiveTab] = useState('dashboard');
+      const [toast, setToast] = useState(null);
+
+      // System State
+      const [schoolLogo, setSchoolLogo] = useState("");
+      const [academicYears, setAcademicYears] = useState(initialAcademicYears);
+      const [classes, setClasses] = useState(initialClasses);
+      const [examTypes, setExamTypes] = useState(initialExamTypes);
+      const [subjectsByYear, setSubjectsByYear] = useState(initialSubjectsByYear);
+      const [subjectAbbreviations, setSubjectAbbreviations] = useState(initialSubjectAbbreviations);
+      const [gradingScales, setGradingScales] = useState(initialGradingScales);
+      const [examStatuses, setExamStatuses] = useState({});
+      const [slipStatuses, setSlipStatuses] = useState({});
+      const [students, setStudents] = useState(initialStudents);
+      const [teachers, setTeachers] = useState(initialTeachers);
+      const [pbdRecords, setPbdRecords] = useState(initialPbdRecords);
+      // Simpan snapshot terakhir yang diketahui berjaya disegerakkan. Digunakan untuk
+      // menghantar perubahan rekod sahaja, bukan menggantikan seluruh helaian PBD_RECORDS.
+      const pbdBaselineRef = useRef(initialPbdRecords);
+      const pbdSaveQueueRef = useRef(Promise.resolve());
+
+      const pbdRecordKey = (r) => [r.studentIc, r.academicYear, r.examType, r.subject]
+        .map(v => String(v == null ? '' : v).trim().toUpperCase()).join('||');
+
+      useEffect(() => {
+        let isMounted = true;
+        const loadFromGAS = async () => {
+          if (!GAS_WEB_APP_URL || GAS_WEB_APP_URL.includes("MASUKKAN_URL")) {
+            setIsHydrated(true);
+            setIsLoading(false);
+            return;
+          }
+          try {
+            const res = await fetch(GAS_WEB_APP_URL + '?action=loadAll');
+            const json = await res.json();
+            if (isMounted && json.status === 'success' && json.data) {
+              const d = json.data;
+              if (d.schoolLogo !== undefined) setSchoolLogo(d.schoolLogo || "");
+              if (d.academicYears && d.academicYears.length > 0) setAcademicYears(d.academicYears);
+              if (d.classes && d.classes.length > 0) setClasses(d.classes);
+              if (d.examTypes && d.examTypes.length > 0) setExamTypes(d.examTypes);
+              if (d.subjectsByYear && Object.keys(d.subjectsByYear).length > 0) setSubjectsByYear(d.subjectsByYear);
+              if (d.subjectAbbreviations && Object.keys(d.subjectAbbreviations).length > 0) setSubjectAbbreviations(d.subjectAbbreviations);
+              if (d.gradingScales && Object.keys(d.gradingScales).length > 0) setGradingScales(d.gradingScales);
+              if (d.examStatuses) setExamStatuses(d.examStatuses);
+              if (d.slipStatuses) setSlipStatuses(d.slipStatuses);
+              if (d.students) setStudents(d.students);
+              if (d.teachers) setTeachers(d.teachers);
+              if (d.pbdRecords) {
+                pbdBaselineRef.current = d.pbdRecords.map(r => ({ ...r }));
+                setPbdRecords(d.pbdRecords);
+              }
+              
+              setIsHydrated(true); // Pindah ke sini: HANYA BENARKAN JIKA BERJAYA
+              setIsLoading(false);
+            } else {
+              throw new Error("Gagal memperoleh status kejayaan (success) daripada pelayan.");
+            }
+          } catch(err) {
+            console.error("Gagal muat data dari Google Sheets:", err);
+            if (isMounted) {
+              setLoadError(true); // Mencegah autosave berjalan
+              setIsLoading(false);
+            }
+          }
+        };
+        loadFromGAS();
+        return () => { isMounted = false; };
+      }, []);
+
+      const saveToGAS = async (key, val) => {
+        if (!isHydrated || loadError) return false;
+        if (!GAS_WEB_APP_URL || GAS_WEB_APP_URL.includes("MASUKKAN_URL")) return false;
+        try {
+          const response = await fetch(GAS_WEB_APP_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            body: JSON.stringify({ action: key === 'pbdChanges' ? 'savePbdChanges' : 'saveKey', key: key, value: val })
+          });
+          if (!response.ok) throw new Error('HTTP ' + response.status);
+          const result = await response.json();
+          if (!result || result.status !== 'success') throw new Error((result && result.message) || 'Pelayan tidak mengesahkan simpanan.');
+          return true;
+        } catch(e) {
+          console.error("Gagal simpan ke Google Sheets:", e);
+          return false;
+        }
+      };
+
+      // Penggunaan Hook Tersuai bagi menghalang simpanan automatik menimpa data awan apabila sistem baru dimulakan
+      useAutosave('schoolLogo', schoolLogo, isHydrated, saveToGAS);
+      useAutosave('academicYears', academicYears, isHydrated, saveToGAS);
+      useAutosave('classes', classes, isHydrated, saveToGAS);
+      useAutosave('examTypes', examTypes, isHydrated, saveToGAS);
+      useAutosave('subjectsByYear', subjectsByYear, isHydrated, saveToGAS);
+      useAutosave('subjectAbbreviations', subjectAbbreviations, isHydrated, saveToGAS);
+      useAutosave('gradingScales', gradingScales, isHydrated, saveToGAS);
+      useAutosave('examStatuses', examStatuses, isHydrated, saveToGAS);
+      useAutosave('slipStatuses', slipStatuses, isHydrated, saveToGAS);
+      useAutosave('students', students, isHydrated, saveToGAS);
+      useAutosave('teachers', teachers, isHydrated, saveToGAS);
+
+      // Simpan perubahan rekod PBD sahaja. Rekod guru lain yang tidak wujud dalam
+      // snapshot lama tidak akan dipadam oleh browser yang belum menerima data terbaru.
+      useEffect(() => {
+        if (!isHydrated || loadError) return;
+        const snapshot = (pbdRecords || []).map(r => ({ ...r }));
+        pbdSaveQueueRef.current = pbdSaveQueueRef.current.then(async () => {
+          const baseline = pbdBaselineRef.current || [];
+          const oldMap = new Map(baseline.map(r => [pbdRecordKey(r), r]));
+          const newMap = new Map(snapshot.map(r => [pbdRecordKey(r), r]));
+          const upserts = [];
+          const deletes = [];
+          newMap.forEach((record, key) => {
+            const oldRecord = oldMap.get(key);
+            if (!oldRecord || JSON.stringify(oldRecord) !== JSON.stringify(record)) upserts.push(record);
+          });
+          oldMap.forEach((record, key) => {
+            if (!newMap.has(key)) deletes.push({ studentIc: record.studentIc, academicYear: record.academicYear, examType: record.examType, subject: record.subject });
+          });
+          if (!upserts.length && !deletes.length) return;
+          const ok = await saveToGAS('pbdChanges', { upserts, deletes });
+          if (!ok) {
+            notify('AMARAN: Perubahan PBD belum disahkan tersimpan di Google Sheets. Cuba semula selepas sambungan pulih.', 'error');
+            return;
+          }
+          // Kemas kini baseline berdasarkan perubahan yang dihantar sahaja.
+          const nextMap = new Map((pbdBaselineRef.current || []).map(r => [pbdRecordKey(r), { ...r }]));
+          deletes.forEach(d => nextMap.delete(pbdRecordKey(d)));
+          upserts.forEach(r => nextMap.set(pbdRecordKey(r), { ...r }));
+          pbdBaselineRef.current = Array.from(nextMap.values());
+        }).catch(err => console.error('Barisan simpanan PBD gagal:', err));
+      }, [pbdRecords, isHydrated, loadError]);
+
+      const notify = (msg, type = 'info') => { setToast({ msg, type }); setTimeout(() => setToast(null), 3000); };
+
+      if (isLoading) return <div className="min-h-screen flex flex-col items-center justify-center bg-slate-100 text-blue-900"><div className="w-12 h-12 border-4 border-blue-900 border-t-amber-400 rounded-full animate-spin mb-4"></div><p className="font-bold text-sm tracking-widest uppercase">Memuatkan Pangkalan Data...</p></div>;
+      
+      // Paparan jika ralat memuatkan data dari pangkalan. Mengelakkan pengguna melakukan kerosakan tambahan.
+      if (loadError) return (
+        <div className="min-h-screen flex flex-col items-center justify-center bg-slate-100 text-slate-800 p-6 text-center">
+          <div className="bg-white p-10 rounded-3xl shadow-xl max-w-lg border border-red-200">
+            <div className="w-20 h-20 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-6"><Icon name="alert" size={40}/></div>
+            <h2 className="text-2xl font-black mb-4 uppercase text-red-700">Ralat Pemuatan Data</h2>
+            <p className="font-medium text-sm text-slate-600 mb-6 leading-relaxed">
+              Sistem gagal menghubungi pangkalan data (Google Sheets) atau mengalami ralat pemindahan. Demi melindungi data sedia ada daripada terpadam, akses sistem telah <strong>dikunci sepenuhnya</strong>.
+            </p>
+            <button onClick={() => window.location.reload()} className="bg-red-600 text-white font-bold py-3 px-8 rounded-xl shadow-md hover:bg-red-700 transition-colors uppercase tracking-wider text-xs">
+              Muat Semula Halaman (Refresh)
+            </button>
+          </div>
+        </div>
+      );
+
+      if (!currentRole) return (
+        <>
+          <Login teachers={teachers} students={students} setCurrentRole={setCurrentRole} setCurrentUser={setCurrentUser} notify={notify} schoolLogo={schoolLogo} />
+          {toast && <div className={`fixed bottom-5 right-5 px-6 py-3.5 rounded-2xl shadow-2xl text-xs font-bold text-white z-50 flex items-center gap-2 animate-fadeIn ${toast.type === 'error' ? 'bg-red-600' : 'bg-emerald-600'}`}><Icon name={toast.type === 'success' ? 'check' : 'alert'} size={18} /><span>{toast.msg}</span></div>}
+        </>
+      );
+
+      return (
+        <div className="min-h-screen flex flex-col bg-slate-100 print:bg-white">
+          <header className="bg-gradient-to-r from-blue-900 to-[#1e40af] text-white shadow-lg sticky top-0 z-40 no-print">
+            <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
+              <div className="flex items-center space-x-3">
+                {schoolLogo ? <img src={schoolLogo} className="w-11 h-11 object-contain drop-shadow" /> : <div className="w-10 h-10 bg-amber-400 rounded-full text-blue-950 font-black flex items-center justify-center shadow">STAZ</div>}
+                <div><h1 className="text-base font-black text-amber-400 tracking-wider">SK TUNKU AZIZAH</h1><p className="text-[10px] text-blue-100 font-medium tracking-widest">SISTEM PEREKODAN PENTAKSIRAN AWAN</p></div>
+              </div>
+              <div className="flex items-center space-x-4">
+                <div className="text-right hidden sm:block"><p className="text-xs font-extrabold uppercase">{currentUser.name}</p><p className="text-[10px] text-amber-300 uppercase tracking-widest">{currentRole}</p></div>
+                <button onClick={()=>{setCurrentRole(null);setCurrentUser(null);setActiveTab('dashboard');}} className="bg-red-500 hover:bg-red-600 px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 shadow transition-colors"><Icon name="logout" size={14}/>Keluar</button>
+              </div>
+            </div>
+          </header>
+
+          {currentRole !== 'ibubapa' && (
+            <div className="bg-white border-b border-slate-200 shadow-sm no-print overflow-x-auto">
+              <div className="max-w-7xl mx-auto px-4 flex space-x-1 py-2.5 min-w-max">
+                {currentRole === 'admin' ? (
+                  <>
+                    <button onClick={()=>setActiveTab('dashboard')} className={`px-4 py-2 rounded-lg text-xs font-bold transition-colors ${activeTab==='dashboard'?'bg-blue-900 text-amber-400 shadow':'text-slate-600 hover:bg-slate-100'}`}>Dashboard Eksekutif</button>
+                    <button onClick={()=>setActiveTab('student_mgmt')} className={`px-4 py-2 rounded-lg text-xs font-bold transition-colors ${activeTab==='student_mgmt'?'bg-blue-900 text-amber-400 shadow':'text-slate-600 hover:bg-slate-100'}`}>Pengurusan Murid</button>
+                    <button onClick={()=>setActiveTab('teacher_mgmt')} className={`px-4 py-2 rounded-lg text-xs font-bold transition-colors ${activeTab==='teacher_mgmt'?'bg-blue-900 text-amber-400 shadow':'text-slate-600 hover:bg-slate-100'}`}>Guru & Agihan</button>
+                    <button onClick={()=>setActiveTab('admin_pbd')} className={`px-4 py-2 rounded-lg text-xs font-bold transition-colors ${activeTab==='admin_pbd'?'bg-blue-900 text-amber-400 shadow':'text-slate-600 hover:bg-slate-100'}`}>Import PBD Lepas</button>
+                    <span className="w-px h-6 bg-slate-300 mx-2 self-center"></span>
+                    <button onClick={()=>setActiveTab('exam_settings')} className={`px-4 py-2 rounded-lg text-xs font-bold transition-colors ${activeTab==='exam_settings'?'bg-slate-800 text-white shadow':'text-slate-500 hover:bg-slate-100'}`}>Sesi & Pentaksiran</button>
+                    <button onClick={()=>setActiveTab('grade_settings')} className={`px-4 py-2 rounded-lg text-xs font-bold transition-colors ${activeTab==='grade_settings'?'bg-slate-800 text-white shadow':'text-slate-500 hover:bg-slate-100'}`}>Tetapan Gred</button>
+                    <button onClick={()=>setActiveTab('subject_settings')} className={`px-4 py-2 rounded-lg text-xs font-bold transition-colors ${activeTab==='subject_settings'?'bg-slate-800 text-white shadow':'text-slate-500 hover:bg-slate-100'}`}>Subjek</button>
+                    <button onClick={()=>setActiveTab('class_settings')} className={`px-4 py-2 rounded-lg text-xs font-bold transition-colors ${activeTab==='class_settings'?'bg-slate-800 text-white shadow':'text-slate-500 hover:bg-slate-100'}`}>Kelas</button>
+                  </>
+                ) : (
+                  <>
+                    <button onClick={()=>setActiveTab('input_marks')} className={`px-5 py-2.5 rounded-lg text-xs font-bold transition-colors ${activeTab==='input_marks'?'bg-blue-900 text-amber-400 shadow':'text-slate-600 hover:bg-slate-100'}`}>Borang Isi Markah PBD</button>
+                    <button onClick={()=>setActiveTab('overall_view')} className={`px-5 py-2.5 rounded-lg text-xs font-bold transition-colors ${activeTab==='overall_view'?'bg-blue-900 text-amber-400 shadow':'text-slate-600 hover:bg-slate-100'}`}>Semakan Keputusan Penuh</button>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
+
+          <main className="flex-1 max-w-7xl w-full mx-auto p-4 lg:p-8 print:p-0 print:m-0 print:max-w-none">
+            {currentRole === 'admin' && activeTab === 'dashboard' && <AdminDashboard students={students} teachers={teachers} pbdRecords={pbdRecords} academicYears={academicYears} examTypes={examTypes} classes={classes} schoolLogo={schoolLogo} setSchoolLogo={setSchoolLogo} subjectsByYear={subjectsByYear} subjectAbbreviations={subjectAbbreviations} gradingScales={gradingScales} notify={notify} />}
+            {currentRole === 'admin' && activeTab === 'admin_pbd' && <AdminUploadPBD pbdRecords={pbdRecords} setPbdRecords={setPbdRecords} academicYears={academicYears} examTypes={examTypes} notify={notify} />}
+            {currentRole === 'admin' && activeTab === 'student_mgmt' && <PengurusanMurid students={students} setStudents={setStudents} pbdRecords={pbdRecords} setPbdRecords={setPbdRecords} classes={classes} academicYears={academicYears} examTypes={examTypes} notify={notify} />}
+            {currentRole === 'admin' && activeTab === 'teacher_mgmt' && <PengurusanGuru teachers={teachers} setTeachers={setTeachers} academicYears={academicYears} examTypes={examTypes} classes={classes} subjectsByYear={subjectsByYear} notify={notify} />}
+            {currentRole === 'admin' && activeTab === 'exam_settings' && <TetapanPeperiksaan academicYears={academicYears} setAcademicYears={setAcademicYears} examTypes={examTypes} setExamTypes={setExamTypes} classes={classes} examStatuses={examStatuses} setExamStatuses={setExamStatuses} slipStatuses={slipStatuses} setSlipStatuses={setSlipStatuses} notify={notify} />}
+            {currentRole === 'admin' && activeTab === 'grade_settings' && <TetapanGred examTypes={examTypes} gradingScales={gradingScales} setGradingScales={setGradingScales} notify={notify} />}
+            {currentRole === 'admin' && activeTab === 'subject_settings' && <TetapanSubjek subjectsByYear={subjectsByYear} setSubjectsByYear={setSubjectsByYear} subjectAbbreviations={subjectAbbreviations} setSubjectAbbreviations={setSubjectAbbreviations} pbdRecords={pbdRecords} setPbdRecords={setPbdRecords} teachers={teachers} setTeachers={setTeachers} notify={notify} />}
+            {currentRole === 'admin' && activeTab === 'class_settings' && <TetapanKelas classes={classes} setClasses={setClasses} notify={notify} />}
+            
+            {currentRole === 'guru' && activeTab === 'input_marks' && <InputMarkahGuru currentUser={currentUser} students={students} pbdRecords={pbdRecords} setPbdRecords={setPbdRecords} gradingScales={gradingScales} examStatuses={examStatuses} notify={notify} />}
+            {currentRole === 'guru' && activeTab === 'overall_view' && <PaparanKeseluruhanGuru students={students} pbdRecords={pbdRecords} academicYears={academicYears} examTypes={examTypes} classes={classes} subjectsByYear={subjectsByYear} subjectAbbreviations={subjectAbbreviations} gradingScales={gradingScales} notify={notify} schoolLogo={schoolLogo} />}
+            
+            {currentRole === 'ibubapa' && <ParentPortal student={currentUser} academicYears={academicYears} examTypes={examTypes} pbdRecords={pbdRecords} subjectsByYear={subjectsByYear} gradingScales={gradingScales} schoolLogo={schoolLogo} notify={notify} slipStatuses={slipStatuses} />}
+          </main>
+
+          {toast && <div className={`fixed bottom-5 right-5 px-6 py-3.5 rounded-2xl shadow-2xl text-xs font-bold text-white z-50 flex items-center gap-2 animate-fadeIn ${toast.type === 'error' ? 'bg-red-600' : 'bg-emerald-600'}`}><Icon name={toast.type === 'success' ? 'check' : 'alert'} size={18} /><span>{toast.msg}</span></div>}
+        </div>
+      );
+    };
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>
